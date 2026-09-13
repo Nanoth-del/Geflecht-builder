@@ -28,6 +28,7 @@ jobs:
       PROJECT_PATH: GeflechtEQ.xcodeproj
       SCHEME: GeflechtEQ
       APP_NAME: GeflechtEQ
+      BUILD_NUMBER: ${{ github.run_number }}
 
     steps:
       - name: Validate immutable build request
@@ -192,6 +193,11 @@ jobs:
           archive_path="$RUNNER_TEMP/GeflechtEQ.xcarchive"
           derived_data="$RUNNER_TEMP/GeflechtEQ-DerivedData"
 
+          if [[ ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Builder run number was not a positive integer."
+            exit 1
+          fi
+
           rm -rf "$archive_path"
           if ! xcodebuild \
             -project "$PROJECT_PATH" \
@@ -205,6 +211,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             archive >"$build_log" 2>&1; then
             echo "::error::iOS archive failed. Detailed compiler output was withheld."
             exit 1
@@ -294,6 +301,13 @@ jobs:
             exit 1
           fi
 
+          bundle_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_path/Info.plist")"
+          bundle_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app_path/Info.plist")"
+          if [[ ! "$bundle_version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || [[ "$bundle_build" != "$BUILD_NUMBER" ]]; then
+            echo "::error::IPA bundle version metadata did not match this Builder run."
+            exit 1
+          fi
+
           if ! otool -l "$app_binary" >>"$audit_log" 2>&1; then
             echo "::error::IPA privacy audit could not inspect the application binary."
             exit 1
@@ -316,7 +330,7 @@ jobs:
             exit 1
           fi
 
-          echo "Unsigned IPA privacy audit succeeded."
+          echo "Unsigned IPA privacy audit succeeded: version $bundle_version ($bundle_build)."
 
       - name: Publish and verify private Release asset
         env:
@@ -344,7 +358,7 @@ jobs:
             --repo "$RELEASE_REPOSITORY" \
             --target "$source_sha" \
             --title "$APP_NAME $release_tag" \
-            --notes "Unsigned iOS IPA. Re-sign before installation on a physical iPhone." \
+            --notes "Unsigned iOS IPA. Build ${BUILD_NUMBER}. Re-sign before installation on a physical iPhone." \
             --prerelease >"$release_log" 2>&1; then
             echo "::error::Private Release publication failed. Detailed output was withheld."
             exit 1
