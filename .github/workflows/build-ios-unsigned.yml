@@ -213,6 +213,19 @@ jobs:
             CODE_SIGN_IDENTITY='' \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             archive >"$build_log" 2>&1; then
+            # Keep the private build log on the runner, but expose only the
+            # compiler's actionable error lines. Strip runner/source paths and
+            # never print the full log or source excerpts into the public log.
+            sanitized_diagnostics="$(grep -E '(^|[[:space:]])(fatal error:|error:)|SwiftCompile' "$build_log" \
+              | sed -E 's#([^[:space:]]*/)?private-source/#<private-source>/#g' \
+              | tail -n 40 || true)"
+            if [[ -n "$sanitized_diagnostics" ]]; then
+              while IFS= read -r diagnostic; do
+                echo "::error::$diagnostic"
+              done <<< "$sanitized_diagnostics"
+            else
+              echo "::error::No sanitized compiler diagnostic was available."
+            fi
             echo "::error::iOS archive failed. Detailed compiler output was withheld."
             exit 1
           fi
