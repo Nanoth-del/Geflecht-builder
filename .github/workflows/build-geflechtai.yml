@@ -82,7 +82,6 @@ jobs:
           if ! git -C "$source_path" remote add origin \
             "https://github.com/$SOURCE_REPOSITORY.git" \
             >>"$checkout_log" 2>&1; then
-
             echo "::error::Private source configuration failed. Detailed output was withheld."
             exit 1
           fi
@@ -91,7 +90,6 @@ jobs:
             -c "http.extraheader=AUTHORIZATION: basic $auth_header" \
             fetch --no-tags --prune --depth=1 origin "$SOURCE_REF" \
             >>"$checkout_log" 2>&1; then
-
             echo "::error::Private source fetch failed. Detailed output was withheld."
             exit 1
           fi
@@ -99,7 +97,6 @@ jobs:
           if ! git -C "$source_path" \
             checkout --detach --quiet FETCH_HEAD \
             >>"$checkout_log" 2>&1; then
-
             echo "::error::Private source checkout failed. Detailed output was withheld."
             exit 1
           fi
@@ -114,6 +111,24 @@ jobs:
           unset SOURCE_TOKEN auth_header
 
           echo "Private source checkout succeeded."
+
+      - name: Audit private source for embedded credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_path="$GITHUB_WORKSPACE/private-source"
+
+          credential_pattern='AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH |DSA |PRIVATE )?PRIVATE KEY-----|xox[baprs]-[A-Za-z0-9-]+|gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|Bearer[[:space:]]+[A-Za-z0-9._~+/=-]{20,}'
+
+          if git -C "$source_path" \
+            grep -I -E -q "$credential_pattern" -- .; then
+
+            echo "::error::Private source audit found a credential-like secret pattern. Matched content was withheld."
+            exit 1
+          fi
+
+          echo "Private source credential audit succeeded."
 
       - name: Validate private project contract
         shell: bash
@@ -426,11 +441,13 @@ jobs:
             exit 1
           fi
 
+          credential_pattern='AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH |DSA |PRIVATE )?PRIVATE KEY-----|xox[baprs]-[A-Za-z0-9-]+|gh[pousr]_[A-Za-z0-9_]{20,}|sk-(proj|svcacct)-[A-Za-z0-9_-]{20,}|Bearer[[:space:]]+[A-Za-z0-9._~+/=-]{20,}'
+
           if LC_ALL=C grep -R -a -E -q \
-            'AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH |DSA |PRIVATE )?PRIVATE KEY-----|xox[baprs]-[A-Za-z0-9-]+|gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|Bearer[[:space:]]+[A-Za-z0-9._~+/=-]{20,}|/Users/|/home/runner/|private-source|Geflecht-builder|Nanoth-del/' \
+            "$credential_pattern" \
             "$audit_root"; then
 
-            echo "::error::IPA privacy audit found a forbidden metadata or credential pattern."
+            echo "::error::IPA privacy audit found a credential-like secret pattern."
             exit 1
           fi
 
