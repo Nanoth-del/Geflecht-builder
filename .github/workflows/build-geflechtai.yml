@@ -1,0 +1,253 @@
+name: GeflechtAI unsigned IPA build
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "GeflechtAI source commit SHA (40 characters)"
+        required: true
+        default: "4759ea639c970977194c8ab21f8fa24bed67981e"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: geflechtai-build-${{ inputs.source_ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build GeflechtAI unsigned IPA
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    env:
+      SOURCE_REPOSITORY: Nanoth-del/GeflechtAI
+      PROJECT_PATH: GeflechtAI.xcodeproj
+      SCHEME: GeflechtAI
+      APP_NAME: GeflechtAI
+      BUILD_NUMBER: ${{ github.run_number }}
+
+    steps:
+      - name: Validate source SHA
+        shell: bash
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::source_ref must be a lowercase 40-character commit SHA."
+            exit 1
+          fi
+
+          echo "Source SHA accepted: $SOURCE_REF"
+
+      - name: Checkout GeflechtAI
+        uses: actions/checkout@v4
+        with:
+          repository: Nanoth-del/GeflechtAI
+          ref: ${{ inputs.source_ref }}
+          token: ${{ secrets.GeflechtAi }}
+          path: private-source
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify checked out revision
+        shell: bash
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+
+          actual_sha="$(git -C private-source rev-parse HEAD)"
+
+          if [[ "$actual_sha" != "$SOURCE_REF" ]]; then
+            echo "::error::Checked out SHA does not match requested SHA."
+            exit 1
+          fi
+
+          echo "Checked out exact requested revision."
+
+      - name: Show toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          swift --version
+
+      - name: Run context policy regression checks
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -f "Scripts/test-context-policy.sh" ]]; then
+            bash Scripts/test-context-policy.sh
+          else
+            echo "::error::Scripts/test-context-policy.sh was not found."
+            exit 1
+          fi
+
+      - name: Resolve Swift packages
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          xcodebuild \
+            -resolvePackageDependencies \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME" \
+            -skipMacroValidation \
+            -skipPackagePluginValidation
+
+      - name: Clean
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DERIVED_DATA="$RUNNER_TEMP/GeflechtAI-DerivedData"
+
+          xcodebuild \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$DERIVED_DATA" \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            clean
+
+      - name: Build unsigned archive
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ARCHIVE_PATH="$RUNNER_TEMP/GeflechtAI.xcarchive"
+          DERIVED_DATA="$RUNNER_TEMP/GeflechtAI-DerivedData"
+          BUILD_LOG="$RUNNER_TEMP/geflechtai-build.log"
+
+          rm -rf "$ARCHIVE_PATH"
+
+          if ! xcodebuild \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            -derivedDataPath "$DERIVED_DATA" \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            archive >"$BUILD_LOG" 2>&1; then
+
+            echo "::error::GeflechtAI archive failed."
+
+            grep -E \
+              '(^|[[:space:]])(fatal error:|error:)|SwiftCompile' \
+              "$BUILD_LOG" \
+              | sed -E 's#([^[:space:]]*/)?private-source/#<private-source>/#g' \
+              | tail -n 80 || true
+
+            exit 1
+          fi
+
+          APP_PATH="$ARCHIVE_PATH/Products/Applications/$APP_NAME.app"
+
+          if [[ ! -d "$APP_PATH" ]]; then
+            echo "::error::GeflechtAI.app was not produced."
+            exit 1
+          fi
+
+          echo "Unsigned archive succeeded."
+
+      - name: Package unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ARCHIVE_PATH="$RUNNER_TEMP/GeflechtAI.xcarchive"
+          APP_PATH="$ARCHIVE_PATH/Products/Applications/$APP_NAME.app"
+          IPA_ROOT="$RUNNER_TEMP/geflechtai-ipa"
+          IPA_PATH="$RUNNER_TEMP/GeflechtAI-unsigned.ipa"
+
+          rm -rf "$IPA_ROOT"
+          rm -f "$IPA_PATH"
+
+          mkdir -p "$IPA_ROOT/Payload"
+
+          ditto \
+            "$APP_PATH" \
+            "$IPA_ROOT/Payload/$APP_NAME.app"
+
+          (
+            cd "$IPA_ROOT"
+            ditto \
+              -c \
+              -k \
+              --sequesterRsrc \
+              --keepParent \
+              Payload \
+              "$IPA_PATH"
+          )
+
+          test -f "$IPA_PATH"
+
+          echo "IPA packaged successfully."
+
+      - name: Verify unsigned IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          IPA_PATH="$RUNNER_TEMP/GeflechtAI-unsigned.ipa"
+          VERIFY_DIR="$RUNNER_TEMP/geflechtai-verify"
+
+          rm -rf "$VERIFY_DIR"
+          mkdir -p "$VERIFY_DIR"
+
+          unzip -qq "$IPA_PATH" -d "$VERIFY_DIR"
+
+          APP_PATH="$VERIFY_DIR/Payload/$APP_NAME.app"
+
+          if [[ ! -d "$APP_PATH" ]]; then
+            echo "::error::Invalid IPA structure."
+            exit 1
+          fi
+
+          if [[ -e "$APP_PATH/embedded.mobileprovision" ]]; then
+            echo "::error::Unexpected provisioning profile found."
+            exit 1
+          fi
+
+          if [[ -e "$APP_PATH/_CodeSignature" ]]; then
+            echo "::error::Unexpected code signature found."
+            exit 1
+          fi
+
+          plutil -lint "$APP_PATH/Info.plist"
+
+          shasum -a 256 "$IPA_PATH" \
+            | tee "$RUNNER_TEMP/GeflechtAI-unsigned.ipa.sha256"
+
+          echo "Unsigned IPA verification succeeded."
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: GeflechtAI-unsigned-${{ inputs.source_ref }}
+          path: |
+            ${{ runner.temp }}/GeflechtAI-unsigned.ipa
+            ${{ runner.temp }}/GeflechtAI-unsigned.ipa.sha256
+          if-no-files-found: error
+          retention-days: 14
