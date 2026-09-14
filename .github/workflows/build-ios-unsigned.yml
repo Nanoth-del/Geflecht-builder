@@ -6,7 +6,7 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 38fcfaea18ad5d0ff01d57837452e796f523c19e
+        default: a440156e27eca0ea1adc1e4d65adea822069102f
         type: string
 
 # The workflow does not need an ambient repository GITHUB_TOKEN, so no
