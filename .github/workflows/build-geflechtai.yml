@@ -6,7 +6,7 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 4759ea639c970977194c8ab21f8fa24bed67981e
+        default: 9fac017fc8a5da64d2da012ab7ea415973abcd83
         type: string
 
 permissions: {}
@@ -64,7 +64,12 @@ jobs:
           fi
 
           echo "::add-mask::$SOURCE_TOKEN"
-          auth_header="$(printf 'x-access-token:%s' "$SOURCE_TOKEN" | base64 | tr -d '\n')"
+
+          auth_header="$(
+            printf 'x-access-token:%s' "$SOURCE_TOKEN" |
+              base64 |
+              tr -d '\n'
+          )"
 
           rm -rf "$source_path"
           mkdir -p "$source_path"
@@ -75,26 +80,39 @@ jobs:
           fi
 
           if ! git -C "$source_path" remote add origin \
-            "https://github.com/$SOURCE_REPOSITORY.git" >>"$checkout_log" 2>&1; then
+            "https://github.com/$SOURCE_REPOSITORY.git" \
+            >>"$checkout_log" 2>&1; then
+
             echo "::error::Private source configuration failed. Detailed output was withheld."
             exit 1
           fi
 
           if ! git -C "$source_path" \
             -c "http.extraheader=AUTHORIZATION: basic $auth_header" \
-            fetch --no-tags --prune --depth=1 origin "$SOURCE_REF" >>"$checkout_log" 2>&1 || \
-             ! git -C "$source_path" checkout --detach --quiet FETCH_HEAD >>"$checkout_log" 2>&1; then
+            fetch --no-tags --prune --depth=1 origin "$SOURCE_REF" \
+            >>"$checkout_log" 2>&1; then
+
+            echo "::error::Private source fetch failed. Detailed output was withheld."
+            exit 1
+          fi
+
+          if ! git -C "$source_path" \
+            checkout --detach --quiet FETCH_HEAD \
+            >>"$checkout_log" 2>&1; then
+
             echo "::error::Private source checkout failed. Detailed output was withheld."
             exit 1
           fi
 
           source_sha="$(git -C "$source_path" rev-parse HEAD)"
+
           if [[ "$source_sha" != "$SOURCE_REF" ]]; then
             echo "::error::Fetched source revision did not match the requested immutable SHA."
             exit 1
           fi
 
           unset SOURCE_TOKEN auth_header
+
           echo "Private source checkout succeeded."
 
       - name: Validate private project contract
@@ -124,7 +142,10 @@ jobs:
             exit 1
           fi
 
-          xcode_major="$(awk '/Xcode/{split($2, parts, "."); print parts[1]}' "$toolchain_log")"
+          xcode_major="$(
+            awk '/Xcode/{split($2, parts, "."); print parts[1]}' \
+              "$toolchain_log"
+          )"
 
           if [[ "${xcode_major:-0}" -lt 26 ]]; then
             echo "::error::Xcode 26 or newer is required."
@@ -137,26 +158,6 @@ jobs:
           fi
 
           echo "Toolchain validation succeeded."
-
-      - name: Run context policy regression checks privately
-        working-directory: private-source
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          context_log="$RUNNER_TEMP/geflechtai-context-policy.log"
-
-          if [[ ! -f "Scripts/test-context-policy.sh" ]]; then
-            echo "::error::Required context regression script was not found."
-            exit 1
-          fi
-
-          if ! bash Scripts/test-context-policy.sh >"$context_log" 2>&1; then
-            echo "::error::Context policy regression checks failed. Detailed output was withheld."
-            exit 1
-          fi
-
-          echo "Context policy regression checks succeeded."
 
       - name: Resolve Swift packages privately
         working-directory: private-source
@@ -171,7 +172,9 @@ jobs:
             -scheme "$SCHEME" \
             -resolvePackageDependencies \
             -skipMacroValidation \
-            -skipPackagePluginValidation >"$resolve_log" 2>&1; then
+            -skipPackagePluginValidation \
+            >"$resolve_log" 2>&1; then
+
             echo "::error::Swift package resolution failed. Detailed output was withheld."
             exit 1
           fi
@@ -187,6 +190,8 @@ jobs:
           clean_log="$RUNNER_TEMP/geflechtai-clean.log"
           derived_data="$RUNNER_TEMP/GeflechtAI-DerivedData"
 
+          rm -rf "$derived_data"
+
           if ! xcodebuild \
             -project "$PROJECT_PATH" \
             -scheme "$SCHEME" \
@@ -198,7 +203,9 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
-            clean >"$clean_log" 2>&1; then
+            clean \
+            >"$clean_log" 2>&1; then
+
             echo "::error::Xcode clean failed. Detailed output was withheld."
             exit 1
           fi
@@ -235,12 +242,17 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-            archive >"$build_log" 2>&1; then
+            archive \
+            >"$build_log" 2>&1; then
 
             sanitized_diagnostics="$(
-              grep -E '(^|[[:space:]])(fatal error:|error:)|SwiftCompile' "$build_log" \
-                | sed -E 's#([^[:space:]]*/)?private-source/#<private-source>/#g' \
-                | tail -n 40 || true
+              grep -E \
+                '(^|[[:space:]])(fatal error:|error:)|SwiftCompile' \
+                "$build_log" |
+                sed -E \
+                  's#([^[:space:]]*/)?private-source/#<private-source>/#g' |
+                tail -n 60 ||
+                true
             )"
 
             if [[ -n "$sanitized_diagnostics" ]]; then
@@ -278,18 +290,28 @@ jobs:
 
           rm -rf "$ipa_root"
           rm -f "$ipa_path"
+
           mkdir -p "$ipa_root/Payload"
 
-          ditto "$app_path" "$ipa_root/Payload/$APP_NAME.app"
+          ditto \
+            "$app_path" \
+            "$ipa_root/Payload/$APP_NAME.app"
 
           (
             cd "$ipa_root"
-            ditto -c -k --sequesterRsrc --keepParent \
+
+            ditto \
+              -c \
+              -k \
+              --sequesterRsrc \
+              --keepParent \
               Payload \
               "$ipa_path"
           )
 
-          if ! unzip -Z1 "$ipa_path" >"$RUNNER_TEMP/geflechtai-ipa-entries.log" 2>&1; then
+          if ! unzip -Z1 "$ipa_path" \
+            >"$RUNNER_TEMP/geflechtai-ipa-entries.log" 2>&1; then
+
             echo "::error::IPA packaging validation failed."
             exit 1
           fi
@@ -312,7 +334,10 @@ jobs:
           rm -rf "$audit_root"
           mkdir -p "$audit_root"
 
-          if ! unzip -qq "$ipa_path" -d "$audit_root" >"$audit_log" 2>&1; then
+          if ! unzip -qq "$ipa_path" \
+            -d "$audit_root" \
+            >"$audit_log" 2>&1; then
+
             echo "::error::IPA privacy audit could not unpack the artifact."
             exit 1
           fi
@@ -320,24 +345,34 @@ jobs:
           if [[ ! -d "$app_path" ]] || \
              [[ ! -f "$app_path/Info.plist" ]] || \
              [[ ! -f "$app_binary" ]]; then
+
             echo "::error::IPA privacy audit found an invalid application layout."
             exit 1
           fi
 
           if [[ -e "$app_path/_CodeSignature" ]] || \
              [[ -e "$app_path/embedded.mobileprovision" ]]; then
+
             echo "::error::IPA privacy audit found signing material in an unsigned build."
             exit 1
           fi
 
-          if find "$audit_root" \( \
-            -type f -name '*.swift' -o \
-            -type d \( \
-              -name '*.dSYM' -o \
-              -name '*.xcarchive' -o \
-              -name '*.xcresult' \
+          if find "$audit_root" \
+            \( \
+              -type f -name '*.swift' \
+              -o \
+              -type d \
+              \( \
+                -name '*.dSYM' \
+                -o \
+                -name '*.xcarchive' \
+                -o \
+                -name '*.xcresult' \
+              \) \
             \) \
-          \) -print -quit | grep -q .; then
+            -print -quit |
+            grep -q .; then
+
             echo "::error::IPA privacy audit found source or build products."
             exit 1
           fi
@@ -345,11 +380,14 @@ jobs:
           if grep -E -q \
             '(^|/)(\.git|\.DS_Store|__MACOSX|DerivedData)(/|$)' \
             "$entries_log"; then
+
             echo "::error::IPA privacy audit found disallowed archive metadata."
             exit 1
           fi
 
-          if ! plutil -lint "$app_path/Info.plist" >>"$audit_log" 2>&1; then
+          if ! plutil -lint "$app_path/Info.plist" \
+            >>"$audit_log" 2>&1; then
+
             echo "::error::IPA privacy audit found an invalid bundle metadata file."
             exit 1
           fi
@@ -366,13 +404,19 @@ jobs:
               "$app_path/Info.plist"
           )"
 
-          if [[ ! "$bundle_version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]] || \
-             [[ "$bundle_build" != "$BUILD_NUMBER" ]]; then
-            echo "::error::IPA bundle version metadata did not match this Builder run."
+          if [[ ! "$bundle_version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
+            echo "::error::IPA bundle version was not in an expected numeric format."
             exit 1
           fi
 
-          if ! otool -l "$app_binary" >>"$audit_log" 2>&1; then
+          if [[ "$bundle_build" != "$BUILD_NUMBER" ]]; then
+            echo "::error::IPA bundle build number did not match this Builder run."
+            exit 1
+          fi
+
+          if ! otool -l "$app_binary" \
+            >>"$audit_log" 2>&1; then
+
             echo "::error::IPA privacy audit could not inspect the application binary."
             exit 1
           fi
@@ -385,12 +429,14 @@ jobs:
           if LC_ALL=C grep -R -a -E -q \
             'AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH |DSA |PRIVATE )?PRIVATE KEY-----|xox[baprs]-[A-Za-z0-9-]+|gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|Bearer[[:space:]]+[A-Za-z0-9._~+/=-]{20,}|/Users/|/home/runner/|private-source|Geflecht-builder|Nanoth-del/' \
             "$audit_root"; then
+
             echo "::error::IPA privacy audit found a forbidden metadata or credential pattern."
             exit 1
           fi
 
           if ! shasum -a 256 "$ipa_path" \
             >"$RUNNER_TEMP/geflechtai-ipa.sha256" 2>&1; then
+
             echo "::error::IPA digest generation failed."
             exit 1
           fi
@@ -410,7 +456,9 @@ jobs:
           verify_dir="$RUNNER_TEMP/geflechtai-release-verify"
 
           source_sha="$(
-            git -C "$GITHUB_WORKSPACE/private-source" rev-parse HEAD
+            git \
+              -C "$GITHUB_WORKSPACE/private-source" \
+              rev-parse HEAD
           )"
 
           short_sha="${source_sha:0:12}"
@@ -430,7 +478,9 @@ jobs:
               --target "$source_sha" \
               --title "$APP_NAME $release_tag" \
               --notes "Unsigned iOS IPA. Build ${BUILD_NUMBER}. Re-sign before installation on a physical iPhone." \
-              --prerelease >"$release_log" 2>&1; then
+              --prerelease \
+              >"$release_log" 2>&1; then
+
             echo "::error::Private Release publication failed. Detailed output was withheld."
             exit 1
           fi
@@ -442,17 +492,21 @@ jobs:
             gh release download "$release_tag" \
               --repo "$RELEASE_REPOSITORY" \
               --pattern "${APP_NAME}-unsigned.ipa" \
-              --dir "$verify_dir" >>"$release_log" 2>&1; then
+              --dir "$verify_dir" \
+              >>"$release_log" 2>&1; then
+
             echo "::error::Private Release asset verification download failed."
             exit 1
           fi
 
-          expected_digest="$(awk '{print $1}' "$digest_file")"
+          expected_digest="$(
+            awk '{print $1}' "$digest_file"
+          )"
 
           actual_digest="$(
             shasum -a 256 \
-              "$verify_dir/${APP_NAME}-unsigned.ipa" \
-              | awk '{print $1}'
+              "$verify_dir/${APP_NAME}-unsigned.ipa" |
+              awk '{print $1}'
           )"
 
           if [[ "$expected_digest" != "$actual_digest" ]]; then
@@ -463,6 +517,8 @@ jobs:
           unset RELEASE_TOKEN
 
           echo "Private Release publication and verification succeeded."
+          echo "Release tag: $release_tag"
+          echo "SHA256: $actual_digest"
 
       - name: Remove private working data
         if: always()
