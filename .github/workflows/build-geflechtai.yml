@@ -6,7 +6,7 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 6e2450fcdde5157c26ff12ad798b6463db5b4c1b
+        default: ad85541362eaa952a74a8557087c9dd3949a6b36
         type: string
 
 permissions: {}
