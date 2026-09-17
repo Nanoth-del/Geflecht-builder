@@ -1,6 +1,9 @@
 name: GeflechtAI private unsigned IPA build
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       source_ref:
@@ -12,7 +15,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: geflechtai-private-ipa-${{ inputs.source_ref }}
+  group: geflechtai-private-ipa-${{ inputs.source_ref || '46aaebe28e8d02959943c1339b38de055a2e94af' }}
   cancel-in-progress: false
 
 jobs:
@@ -32,7 +35,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref }}
+          SOURCE_REF: ${{ inputs.source_ref || '46aaebe28e8d02959943c1339b38de055a2e94af' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -46,7 +49,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref }}
+          SOURCE_REF: ${{ inputs.source_ref || '46aaebe28e8d02959943c1339b38de055a2e94af' }}
           SOURCE_TOKEN: ${{ secrets.GeflechtAi }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
