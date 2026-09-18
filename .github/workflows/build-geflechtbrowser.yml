@@ -9,13 +9,13 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: ba16e64c9f08cf8f3c6bd6d2d0a2fe585b9018cd
+        default: 731b8559182d7c6e22964c6ac5af989d7b83c3fc
         type: string
 
 permissions: {}
 
 concurrency:
-  group: geflechtbrowser-private-ipa-${{ inputs.source_ref || 'ba16e64c9f08cf8f3c6bd6d2d0a2fe585b9018cd' }}
+  group: geflechtbrowser-private-ipa-${{ inputs.source_ref || '731b8559182d7c6e22964c6ac5af989d7b83c3fc' }}
   cancel-in-progress: false
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || 'ba16e64c9f08cf8f3c6bd6d2d0a2fe585b9018cd' }}
+          SOURCE_REF: ${{ inputs.source_ref || '731b8559182d7c6e22964c6ac5af989d7b83c3fc' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -49,7 +49,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || 'ba16e64c9f08cf8f3c6bd6d2d0a2fe585b9018cd' }}
+          SOURCE_REF: ${{ inputs.source_ref || '731b8559182d7c6e22964c6ac5af989d7b83c3fc' }}
           SOURCE_TOKEN: ${{ secrets.GEFLECHTBROWSER }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
