@@ -9,13 +9,13 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 138686b80c9208da69421ab5ec12aaa46d8dd4b4
+        default: 65240798800743175b68e2a9c7bf67a0839ecb73
         type: string
 
 permissions: {}
 
 concurrency:
-  group: geflechtbrowser-private-ipa-${{ inputs.source_ref || '138686b80c9208da69421ab5ec12aaa46d8dd4b4' }}
+  group: geflechtbrowser-private-ipa-${{ inputs.source_ref || '65240798800743175b68e2a9c7bf67a0839ecb73' }}
   cancel-in-progress: false
 
 jobs:
