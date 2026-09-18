@@ -35,7 +35,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '138686b80c9208da69421ab5ec12aaa46d8dd4b4' }}
+          SOURCE_REF: ${{ inputs.source_ref || '65240798800743175b68e2a9c7bf67a0839ecb73' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -49,7 +49,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '138686b80c9208da69421ab5ec12aaa46d8dd4b4' }}
+          SOURCE_REF: ${{ inputs.source_ref || '65240798800743175b68e2a9c7bf67a0839ecb73' }}
           SOURCE_TOKEN: ${{ secrets.GEFLECHTBROWSER }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
