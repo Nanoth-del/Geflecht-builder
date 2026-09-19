@@ -9,13 +9,13 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 2fa345552b9d477204597d5fa90580dd0d17e516
+        default: dbfe0ad0fcdc2113ba2d6502c676c7f26a3cdd98
         type: string
 
 permissions: {}
 
 concurrency:
-  group: ogusupport-private-ipa-${{ inputs.source_ref || '2fa345552b9d477204597d5fa90580dd0d17e516' }}
+  group: ogusupport-private-ipa-${{ inputs.source_ref || 'dbfe0ad0fcdc2113ba2d6502c676c7f26a3cdd98' }}
   cancel-in-progress: false
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '2fa345552b9d477204597d5fa90580dd0d17e516' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'dbfe0ad0fcdc2113ba2d6502c676c7f26a3cdd98' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -49,7 +49,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '2fa345552b9d477204597d5fa90580dd0d17e516' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'dbfe0ad0fcdc2113ba2d6502c676c7f26a3cdd98' }}
           SOURCE_TOKEN: ${{ secrets.OGUSUPPORT }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
@@ -208,7 +208,7 @@ jobs:
           if ! xcodebuild \
             -project "$PROJECT_PATH" \
             -scheme "$SCHEME" \
-            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' \
+            -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=latest' \
             -skipMacroValidation \
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO \
