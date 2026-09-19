@@ -403,6 +403,15 @@ jobs:
             exit 1
           fi
 
+          llama_framework_path="$app_path/Frameworks/llama.framework"
+          if [[ ! -d "$llama_framework_path" ]] || \
+             [[ ! -f "$llama_framework_path/llama" ]] || \
+             [[ ! -f "$llama_framework_path/Modules/module.modulemap" ]]; then
+
+            echo "::error::IPA audit did not find the embedded llama.cpp framework."
+            exit 1
+          fi
+
           if [[ -e "$app_path/_CodeSignature" ]] || \
              [[ -e "$app_path/embedded.mobileprovision" ]]; then
 
