@@ -9,19 +9,19 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 1687c3f5d3b5ea0c18aa4044f488c5c9c63af754
+        default: 15c34ca36089abbfa01dc9fb309e6396b50bc0e7
         type: string
 
 permissions: {}
 
 concurrency:
-  group: ogusupport-private-ipa-${{ inputs.source_ref || '1687c3f5d3b5ea0c18aa4044f488c5c9c63af754' }}
+  group: ogusupport-private-ipa-${{ inputs.source_ref || '15c34ca36089abbfa01dc9fb309e6396b50bc0e7' }}
   cancel-in-progress: false
 
 jobs:
   build:
     name: private unsigned archive
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
 
     env:
@@ -31,13 +31,11 @@ jobs:
       SCHEME: OsakaGakuinAI
       APP_NAME: OsakaGakuinAI
       BUILD_NUMBER: ${{ github.run_number }}
-      LLAMA_CPP_XCFRAMEWORK_URL: https://github.com/ggml-org/llama.cpp/releases/download/b5046/llama-b5046-xcframework.zip
-      LLAMA_CPP_XCFRAMEWORK_SHA256: c19be78b5f00d8d29a25da41042cb7afa094cbf6280a225abe614b03b20029ab
 
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '1687c3f5d3b5ea0c18aa4044f488c5c9c63af754' }}
+          SOURCE_REF: ${{ inputs.source_ref || '15c34ca36089abbfa01dc9fb309e6396b50bc0e7' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -51,7 +49,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '1687c3f5d3b5ea0c18aa4044f488c5c9c63af754' }}
+          SOURCE_REF: ${{ inputs.source_ref || '15c34ca36089abbfa01dc9fb309e6396b50bc0e7' }}
           SOURCE_TOKEN: ${{ secrets.OGUSUPPORT }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
@@ -150,40 +148,6 @@ jobs:
 
           echo "Private project contract validated."
 
-      - name: Fetch pinned llama.cpp XCFramework
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          archive_path="$RUNNER_TEMP/llama-b5046-xcframework.zip"
-          extract_path="$RUNNER_TEMP/llama-b5046-xcframework"
-          source_path="$GITHUB_WORKSPACE/private-source"
-          framework_destination="$source_path/llama.xcframework"
-
-          rm -rf "$extract_path" "$framework_destination"
-          rm -f "$archive_path"
-          mkdir -p "$extract_path"
-
-          curl --fail --location --retry 3 \
-            --output "$archive_path" \
-            "$LLAMA_CPP_XCFRAMEWORK_URL"
-
-          actual_sha="$(shasum -a 256 "$archive_path" | awk '{print $1}')"
-          if [[ "$actual_sha" != "$LLAMA_CPP_XCFRAMEWORK_SHA256" ]]; then
-            echo "::error::llama.cpp XCFramework checksum mismatch."
-            exit 1
-          fi
-
-          unzip -q "$archive_path" -d "$extract_path"
-          framework_path="$(find "$extract_path" -type d -name 'llama.xcframework' -print -quit)"
-          if [[ -z "$framework_path" ]]; then
-            echo "::error::Expected llama.xcframework was not found."
-            exit 1
-          fi
-
-          ditto "$framework_path" "$framework_destination"
-          echo "Pinned llama.cpp XCFramework staged."
-
       - name: Validate Xcode toolchain privately
         shell: bash
         run: |
@@ -201,8 +165,8 @@ jobs:
               "$toolchain_log"
           )"
 
-          if [[ "${xcode_major:-0}" -lt 26 ]]; then
-            echo "::error::Xcode 26 or newer is required."
+          if [[ "${xcode_major:-0}" -lt 27 ]]; then
+            echo "::error::Xcode 27 or newer is required."
             exit 1
           fi
 
@@ -235,6 +199,24 @@ jobs:
 
           echo "Swift package resolution succeeded."
 
+      - name: Run timetable XCTest privately
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_log="$RUNNER_TEMP/ogusupport-xctest.log"
+          if ! xcodebuild \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME" \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            test >"$test_log" 2>&1; then
+            echo "::error::XCTest failed. Detailed output was withheld."
+            exit 1
+          fi
+          echo "XCTest succeeded."
       - name: Clean Xcode project privately
         working-directory: private-source
         shell: bash
@@ -328,35 +310,6 @@ jobs:
 
           echo "iOS archive succeeded."
 
-      - name: Embed pinned llama.cpp framework in archive privately
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          app_path="$RUNNER_TEMP/OsakaGakuinAI.xcarchive/Products/Applications/$APP_NAME.app"
-          xcframework_path="$GITHUB_WORKSPACE/private-source/llama.xcframework"
-          device_framework_path="$(find "$xcframework_path" \
-            -type d \
-            -path '*/ios-arm64/llama.framework' \
-            -print -quit)"
-          embedded_framework_path="$app_path/Frameworks/llama.framework"
-
-          if [[ -z "$device_framework_path" ]]; then
-            echo "::error::The iOS arm64 llama.cpp framework slice was not found."
-            exit 1
-          fi
-
-          rm -rf "$embedded_framework_path"
-          mkdir -p "$app_path/Frameworks"
-          ditto "$device_framework_path" "$embedded_framework_path"
-
-          if [[ ! -f "$embedded_framework_path/llama" ]]; then
-            echo "::error::The llama.cpp framework binary was not embedded in the archive."
-            exit 1
-          fi
-
-          echo "Pinned llama.cpp iOS arm64 framework embedded in archive."
-
       - name: Package unsigned IPA privately
         shell: bash
         run: |
@@ -430,15 +383,6 @@ jobs:
              [[ ! -f "$app_binary" ]]; then
 
             echo "::error::IPA privacy audit found an invalid application layout."
-            exit 1
-          fi
-
-          llama_framework_path="$app_path/Frameworks/llama.framework"
-          if [[ ! -d "$llama_framework_path" ]] || \
-             [[ ! -f "$llama_framework_path/llama" ]] || \
-             [[ ! -f "$llama_framework_path/Modules/module.modulemap" ]]; then
-
-            echo "::error::IPA audit did not find the embedded llama.cpp framework."
             exit 1
           fi
 
@@ -625,13 +569,11 @@ jobs:
             "$RUNNER_TEMP/OsakaGakuinAI-DerivedData" \
             "$RUNNER_TEMP/ogusupport-ipa" \
             "$RUNNER_TEMP/ogusupport-ipa-audit" \
-            "$RUNNER_TEMP/ogusupport-release-verify" \
-            "$RUNNER_TEMP/llama-b5046-xcframework"
+            "$RUNNER_TEMP/ogusupport-release-verify"
 
           rm -f \
             "$RUNNER_TEMP"/ogusupport-*.log \
             "$RUNNER_TEMP"/ogusupport-*.sha256 \
-            "$RUNNER_TEMP/OsakaGakuinAI-unsigned.ipa" \
-            "$RUNNER_TEMP/llama-b5046-xcframework.zip"
+            "$RUNNER_TEMP/OsakaGakuinAI-unsigned.ipa"
 
           echo "Private working data removed."
