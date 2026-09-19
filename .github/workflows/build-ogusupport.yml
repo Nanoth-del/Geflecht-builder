@@ -31,6 +31,8 @@ jobs:
       SCHEME: OsakaGakuinAI
       APP_NAME: OsakaGakuinAI
       BUILD_NUMBER: ${{ github.run_number }}
+      LLAMA_CPP_XCFRAMEWORK_URL: https://github.com/ggml-org/llama.cpp/releases/download/b5046/llama-b5046-xcframework.zip
+      LLAMA_CPP_XCFRAMEWORK_SHA256: c19be78b5f00d8d29a25da41042cb7afa094cbf6280a225abe614b03b20029ab
 
     steps:
       - name: Validate immutable build request
@@ -147,6 +149,38 @@ jobs:
           fi
 
           echo "Private project contract validated."
+
+      - name: Fetch pinned llama.cpp XCFramework
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          archive_path="$RUNNER_TEMP/llama-b5046-xcframework.zip"
+          extract_path="$RUNNER_TEMP/llama-b5046-xcframework"
+          vendor_path="$GITHUB_WORKSPACE/private-source/Vendor"
+
+          rm -rf "$extract_path" "$vendor_path"
+          rm -f "$archive_path"
+          mkdir -p "$extract_path" "$vendor_path"
+
+          curl --fail --location --retry 3 \
+            --output "$archive_path" \
+            "$LLAMA_CPP_XCFRAMEWORK_URL"
+
+          actual_sha="$(shasum -a 256 "$archive_path" | awk '{print $1}')"
+          if [[ "$actual_sha" != "$LLAMA_CPP_XCFRAMEWORK_SHA256" ]]; then
+            echo "::error::llama.cpp XCFramework checksum mismatch."
+            exit 1
+          fi
+
+          unzip -q "$archive_path" -d "$extract_path"
+          if [[ ! -d "$extract_path/llama.xcframework" ]]; then
+            echo "::error::Expected llama.xcframework was not found."
+            exit 1
+          fi
+
+          ditto "$extract_path/llama.xcframework" "$vendor_path/llama.xcframework"
+          echo "Pinned llama.cpp XCFramework staged."
 
       - name: Validate Xcode toolchain privately
         shell: bash
@@ -551,11 +585,13 @@ jobs:
             "$RUNNER_TEMP/OsakaGakuinAI-DerivedData" \
             "$RUNNER_TEMP/ogusupport-ipa" \
             "$RUNNER_TEMP/ogusupport-ipa-audit" \
-            "$RUNNER_TEMP/ogusupport-release-verify"
+            "$RUNNER_TEMP/ogusupport-release-verify" \
+            "$RUNNER_TEMP/llama-b5046-xcframework"
 
           rm -f \
             "$RUNNER_TEMP"/ogusupport-*.log \
             "$RUNNER_TEMP"/ogusupport-*.sha256 \
-            "$RUNNER_TEMP/OsakaGakuinAI-unsigned.ipa"
+            "$RUNNER_TEMP/OsakaGakuinAI-unsigned.ipa" \
+            "$RUNNER_TEMP/llama-b5046-xcframework.zip"
 
           echo "Private working data removed."
