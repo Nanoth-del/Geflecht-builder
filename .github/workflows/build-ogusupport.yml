@@ -157,11 +157,12 @@ jobs:
 
           archive_path="$RUNNER_TEMP/llama-b5046-xcframework.zip"
           extract_path="$RUNNER_TEMP/llama-b5046-xcframework"
-          vendor_path="$GITHUB_WORKSPACE/private-source/Vendor"
+          source_path="$GITHUB_WORKSPACE/private-source"
+          framework_destination="$source_path/llama.xcframework"
 
-          rm -rf "$extract_path" "$vendor_path"
+          rm -rf "$extract_path" "$framework_destination"
           rm -f "$archive_path"
-          mkdir -p "$extract_path" "$vendor_path"
+          mkdir -p "$extract_path"
 
           curl --fail --location --retry 3 \
             --output "$archive_path" \
@@ -180,7 +181,7 @@ jobs:
             exit 1
           fi
 
-          ditto "$framework_path" "$vendor_path/llama.xcframework"
+          ditto "$framework_path" "$framework_destination"
           echo "Pinned llama.cpp XCFramework staged."
 
       - name: Validate Xcode toolchain privately
