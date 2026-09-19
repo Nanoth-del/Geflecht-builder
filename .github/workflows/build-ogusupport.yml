@@ -328,6 +328,35 @@ jobs:
 
           echo "iOS archive succeeded."
 
+      - name: Embed pinned llama.cpp framework in archive privately
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          app_path="$RUNNER_TEMP/OsakaGakuinAI.xcarchive/Products/Applications/$APP_NAME.app"
+          xcframework_path="$GITHUB_WORKSPACE/private-source/llama.xcframework"
+          device_framework_path="$(find "$xcframework_path" \
+            -type d \
+            -path '*/ios-arm64/llama.framework' \
+            -print -quit)"
+          embedded_framework_path="$app_path/Frameworks/llama.framework"
+
+          if [[ -z "$device_framework_path" ]]; then
+            echo "::error::The iOS arm64 llama.cpp framework slice was not found."
+            exit 1
+          fi
+
+          rm -rf "$embedded_framework_path"
+          mkdir -p "$app_path/Frameworks"
+          ditto "$device_framework_path" "$embedded_framework_path"
+
+          if [[ ! -f "$embedded_framework_path/llama" ]]; then
+            echo "::error::The llama.cpp framework binary was not embedded in the archive."
+            exit 1
+          fi
+
+          echo "Pinned llama.cpp iOS arm64 framework embedded in archive."
+
       - name: Package unsigned IPA privately
         shell: bash
         run: |
