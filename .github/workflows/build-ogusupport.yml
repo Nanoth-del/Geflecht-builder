@@ -193,7 +193,8 @@ jobs:
             -skipPackagePluginValidation \
             >"$resolve_log" 2>&1; then
 
-            echo "::error::Swift package resolution failed. Detailed output was withheld."
+            cat "$resolve_log" || true
+            echo "::error::Swift package resolution failed."
             exit 1
           fi
 
