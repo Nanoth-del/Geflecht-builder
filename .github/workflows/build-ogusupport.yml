@@ -174,12 +174,13 @@ jobs:
           fi
 
           unzip -q "$archive_path" -d "$extract_path"
-          if [[ ! -d "$extract_path/llama.xcframework" ]]; then
+          framework_path="$(find "$extract_path" -type d -name 'llama.xcframework' -print -quit)"
+          if [[ -z "$framework_path" ]]; then
             echo "::error::Expected llama.xcframework was not found."
             exit 1
           fi
 
-          ditto "$extract_path/llama.xcframework" "$vendor_path/llama.xcframework"
+          ditto "$framework_path" "$vendor_path/llama.xcframework"
           echo "Pinned llama.cpp XCFramework staged."
 
       - name: Validate Xcode toolchain privately
