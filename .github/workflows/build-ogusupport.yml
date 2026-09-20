@@ -9,13 +9,13 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 30c968952402d2146c3009c5f7fb41f9e37aa3ce
+        default: b88a0fca5b94d0554a54e3cf2aa2f03cfc2acd36
         type: string
 
 permissions: {}
 
 concurrency:
-  group: ogusupport-private-ipa-${{ inputs.source_ref || '30c968952402d2146c3009c5f7fb41f9e37aa3ce' }}
+  group: ogusupport-private-ipa-${{ inputs.source_ref || 'b88a0fca5b94d0554a54e3cf2aa2f03cfc2acd36' }}
   cancel-in-progress: false
 
 jobs:
@@ -35,7 +35,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '30c968952402d2146c3009c5f7fb41f9e37aa3ce' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'b88a0fca5b94d0554a54e3cf2aa2f03cfc2acd36' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -49,7 +49,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '30c968952402d2146c3009c5f7fb41f9e37aa3ce' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'b88a0fca5b94d0554a54e3cf2aa2f03cfc2acd36' }}
           SOURCE_TOKEN: ${{ secrets.OGUSUPPORT }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
