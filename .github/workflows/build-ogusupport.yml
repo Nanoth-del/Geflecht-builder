@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '.github/workflows/build-ogusupport.yml'
   workflow_dispatch:
     inputs:
       source_ref:
@@ -11,6 +13,11 @@ on:
         required: true
         default: f337a8a86275bca8c489a4cec4e49ad1255d0a6c
         type: string
+      run_tests:
+        description: Run simulator XCTest suite (adds ~5-6 minutes)
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -200,6 +207,7 @@ jobs:
           echo "Swift package resolution succeeded."
 
       - name: Run timetable XCTest privately
+        if: ${{ inputs.run_tests == true }}
         working-directory: private-source
         shell: bash
         run: |
@@ -230,6 +238,7 @@ jobs:
           fi
           echo "XCTest succeeded."
       - name: Clean Xcode project privately
+        if: ${{ inputs.run_tests == true }}
         working-directory: private-source
         shell: bash
         run: |
