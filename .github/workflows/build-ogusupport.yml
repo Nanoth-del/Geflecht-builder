@@ -9,13 +9,13 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 289b0af8fde4200a1693a897ca36573837c32376
+        default: 723c962e0afc859315f081a8ec9229e0009c862c
         type: string
 
 permissions: {}
 
 concurrency:
-  group: ogusupport-private-ipa-${{ inputs.source_ref || '289b0af8fde4200a1693a897ca36573837c32376' }}
+  group: ogusupport-private-ipa-${{ inputs.source_ref || '723c962e0afc859315f081a8ec9229e0009c862c' }}
   cancel-in-progress: false
 
 jobs:
