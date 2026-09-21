@@ -11,7 +11,7 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 4fab87ac0bca1473e225801f66201623bc09f43d
+        default: eef21722e73ce3fb9e2c073ffc9dcda25aee3a5d
         type: string
       run_tests:
         description: Run simulator XCTest suite (adds ~5-6 minutes)
@@ -22,7 +22,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: ogusupport-private-ipa-${{ inputs.source_ref || '4fab87ac0bca1473e225801f66201623bc09f43d' }}
+  group: ogusupport-private-ipa-${{ inputs.source_ref || 'eef21722e73ce3fb9e2c073ffc9dcda25aee3a5d' }}
   cancel-in-progress: false
 
 jobs:
@@ -42,7 +42,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '4fab87ac0bca1473e225801f66201623bc09f43d' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'eef21722e73ce3fb9e2c073ffc9dcda25aee3a5d' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -56,7 +56,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '4fab87ac0bca1473e225801f66201623bc09f43d' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'eef21722e73ce3fb9e2c073ffc9dcda25aee3a5d' }}
           SOURCE_TOKEN: ${{ secrets.OGUSUPPORT }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
@@ -207,7 +207,7 @@ jobs:
           echo "Swift package resolution succeeded."
 
       - name: Run timetable XCTest privately
-        if: ${{ inputs.run_tests == true }}
+        if: ${{ github.event_name == 'push' || inputs.run_tests == true }}
         working-directory: private-source
         shell: bash
         run: |
@@ -238,7 +238,7 @@ jobs:
           fi
           echo "XCTest succeeded."
       - name: Clean Xcode project privately
-        if: ${{ inputs.run_tests == true }}
+        if: ${{ github.event_name == 'push' || inputs.run_tests == true }}
         working-directory: private-source
         shell: bash
         run: |
