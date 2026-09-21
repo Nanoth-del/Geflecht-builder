@@ -11,7 +11,7 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: eef21722e73ce3fb9e2c073ffc9dcda25aee3a5d
+        default: 3e84a5e6cbbd9013ad1eb36b5343b0fa77da8fe7
         type: string
       run_tests:
         description: Run simulator XCTest suite (adds ~5-6 minutes)
@@ -22,7 +22,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: ogusupport-private-ipa-${{ inputs.source_ref || 'eef21722e73ce3fb9e2c073ffc9dcda25aee3a5d' }}
+  group: ogusupport-private-ipa-${{ inputs.source_ref || '3e84a5e6cbbd9013ad1eb36b5343b0fa77da8fe7' }}
   cancel-in-progress: false
 
 jobs:
@@ -42,7 +42,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || 'eef21722e73ce3fb9e2c073ffc9dcda25aee3a5d' }}
+          SOURCE_REF: ${{ inputs.source_ref || '3e84a5e6cbbd9013ad1eb36b5343b0fa77da8fe7' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -56,7 +56,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || 'eef21722e73ce3fb9e2c073ffc9dcda25aee3a5d' }}
+          SOURCE_REF: ${{ inputs.source_ref || '3e84a5e6cbbd9013ad1eb36b5343b0fa77da8fe7' }}
           SOURCE_TOKEN: ${{ secrets.OGUSUPPORT }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
