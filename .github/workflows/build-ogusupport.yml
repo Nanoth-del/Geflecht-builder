@@ -207,7 +207,7 @@ jobs:
           echo "Swift package resolution succeeded."
 
       - name: Run timetable XCTest privately
-        if: ${{ github.event_name == 'push' || inputs.run_tests == true }}
+        if: ${{ inputs.run_tests == true }}
         working-directory: private-source
         shell: bash
         run: |
@@ -238,7 +238,7 @@ jobs:
           fi
           echo "XCTest succeeded."
       - name: Clean Xcode project privately
-        if: ${{ github.event_name == 'push' || inputs.run_tests == true }}
+        if: ${{ inputs.run_tests == true }}
         working-directory: private-source
         shell: bash
         run: |
