@@ -11,13 +11,13 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: e3a6a36dbfbbdacd3690e84ee5623cb024d3e423
+        default: 715019122f1f5c3036bad737c4b5cf06eea9f337
         type: string
 
 permissions: {}
 
 concurrency:
-  group: geflechtboard-private-ipa-${{ inputs.source_ref || 'e3a6a36dbfbbdacd3690e84ee5623cb024d3e423' }}
+  group: geflechtboard-private-ipa-${{ inputs.source_ref || '715019122f1f5c3036bad737c4b5cf06eea9f337' }}
   cancel-in-progress: false
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || 'e3a6a36dbfbbdacd3690e84ee5623cb024d3e423' }}
+          SOURCE_REF: ${{ inputs.source_ref || '715019122f1f5c3036bad737c4b5cf06eea9f337' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -51,7 +51,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || 'e3a6a36dbfbbdacd3690e84ee5623cb024d3e423' }}
+          SOURCE_REF: ${{ inputs.source_ref || '715019122f1f5c3036bad737c4b5cf06eea9f337' }}
           SOURCE_TOKEN: ${{ secrets.GeflechtBoard }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
@@ -451,6 +451,37 @@ jobs:
           fi
           if ! otool -hv "$extension_path/$extension_executable" >>"$audit_log" 2>&1; then
             echo "::error::Keyboard extension executable is not a valid Mach-O."
+            exit 1
+          fi
+
+          if ! extension_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleName' "$extension_plist" 2>>"$audit_log")" ||
+             [[ "$extension_name" != "GeflechtBoard" ]]; then
+            echo "::error::Keyboard extension CFBundleName is missing or invalid."
+            exit 1
+          fi
+          if ! extension_display_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$extension_plist" 2>>"$audit_log")" ||
+             [[ "$extension_display_name" != "GeflechtBoard" ]]; then
+            echo "::error::Keyboard extension CFBundleDisplayName is missing or invalid."
+            exit 1
+          fi
+          if ! extension_type="$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$extension_plist" 2>>"$audit_log")" ||
+             [[ "$extension_type" != "XPC!" ]]; then
+            echo "::error::Keyboard extension CFBundlePackageType is missing or invalid."
+            exit 1
+          fi
+          if ! extension_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$extension_plist" 2>>"$audit_log")" ||
+             [[ "$extension_identifier" != "com.nanothdel.GeflechtBoard.Keyboard" ]]; then
+            echo "::error::Keyboard extension CFBundleIdentifier is missing or invalid."
+            exit 1
+          fi
+          if ! extension_plist_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleInfoDictionaryVersion' "$extension_plist" 2>>"$audit_log")" ||
+             [[ "$extension_plist_version" != "6.0" ]]; then
+            echo "::error::Keyboard extension CFBundleInfoDictionaryVersion is missing or invalid."
+            exit 1
+          fi
+          if ! extension_point="$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$extension_plist" 2>>"$audit_log")" ||
+             [[ "$extension_point" != "com.apple.keyboard-service" ]]; then
+            echo "::error::Keyboard extension NSExtension:NSExtensionPointIdentifier is missing or invalid."
             exit 1
           fi
 
