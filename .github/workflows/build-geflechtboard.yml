@@ -11,13 +11,13 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 474fcc6f443b4df614ef406c899cb770088e2599
+        default: e3a6a36dbfbbdacd3690e84ee5623cb024d3e423
         type: string
 
 permissions: {}
 
 concurrency:
-  group: geflechtboard-private-ipa-${{ inputs.source_ref || '474fcc6f443b4df614ef406c899cb770088e2599' }}
+  group: geflechtboard-private-ipa-${{ inputs.source_ref || 'e3a6a36dbfbbdacd3690e84ee5623cb024d3e423' }}
   cancel-in-progress: false
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '474fcc6f443b4df614ef406c899cb770088e2599' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'e3a6a36dbfbbdacd3690e84ee5623cb024d3e423' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -51,7 +51,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '474fcc6f443b4df614ef406c899cb770088e2599' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'e3a6a36dbfbbdacd3690e84ee5623cb024d3e423' }}
           SOURCE_TOKEN: ${{ secrets.GeflechtBoard }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
@@ -427,6 +427,30 @@ jobs:
             >>"$audit_log" 2>&1; then
 
             echo "::error::IPA privacy audit found an invalid bundle metadata file."
+            exit 1
+          fi
+
+          extension_path="$app_path/PlugIns/GeflechtBoardKeyboard.appex"
+          extension_plist="$extension_path/Info.plist"
+          if [[ ! -f "$extension_plist" ]]; then
+            echo "::error::Keyboard extension Info.plist missing from IPA."
+            exit 1
+          fi
+          if ! plutil -lint "$extension_plist" >>"$audit_log" 2>&1; then
+            echo "::error::Keyboard extension Info.plist is invalid."
+            exit 1
+          fi
+          if ! extension_executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$extension_plist" 2>>"$audit_log")"; then
+            echo "::error::Keyboard extension CFBundleExecutable missing."
+            exit 1
+          fi
+          if [[ "$extension_executable" != "GeflechtBoardKeyboard" ]] ||
+             [[ ! -f "$extension_path/$extension_executable" ]]; then
+            echo "::error::Keyboard extension executable name or binary is invalid."
+            exit 1
+          fi
+          if ! otool -hv "$extension_path/$extension_executable" >>"$audit_log" 2>&1; then
+            echo "::error::Keyboard extension executable is not a valid Mach-O."
             exit 1
           fi
 
