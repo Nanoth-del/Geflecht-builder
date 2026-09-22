@@ -12,7 +12,7 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 45
     env:
-      SOURCE_SHA: 0ad9573925c96ab1f4284a21211bc84328e5f269
+      SOURCE_SHA: e40c8521012b0803a1a49634ae33fc74f52f2a58
     steps:
       - name: Verify Xcode toolchain
         shell: bash
