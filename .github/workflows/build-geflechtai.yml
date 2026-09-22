@@ -11,13 +11,13 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 7335285394ca4dd0062bd80f26d161ff66378111
+        default: 4b2c99520445a59dc6ca702873bf0aad49bff141
         type: string
 
 permissions: {}
 
 concurrency:
-  group: geflechtai-private-ipa-${{ inputs.source_ref || '7335285394ca4dd0062bd80f26d161ff66378111' }}
+  group: geflechtai-private-ipa-${{ inputs.source_ref || '4b2c99520445a59dc6ca702873bf0aad49bff141' }}
   cancel-in-progress: false
 
 jobs:
@@ -38,7 +38,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '7335285394ca4dd0062bd80f26d161ff66378111' }}
+          SOURCE_REF: ${{ inputs.source_ref || '4b2c99520445a59dc6ca702873bf0aad49bff141' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -52,7 +52,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '7335285394ca4dd0062bd80f26d161ff66378111' }}
+          SOURCE_REF: ${{ inputs.source_ref || '4b2c99520445a59dc6ca702873bf0aad49bff141' }}
           SOURCE_TOKEN: ${{ secrets.GeflechtAi }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
@@ -182,7 +182,7 @@ jobs:
 
       - name: Restore llama.xcframework cache privately
         id: llama-cache
-        uses: actions/cache@704fac72260e90f824b1719532725a3c5349c4c5729aa66a473e1ad86c9e26e9 # v4.3.0
+        uses: actions/cache@v4
         with:
           path: private-source/Vendor/llama.xcframework
           key: llama-xcframework-${{ env.LLAMA_CPP_REF }}-ios17-${{ hashFiles('private-source/scripts/build-llama-ios.sh') }}
