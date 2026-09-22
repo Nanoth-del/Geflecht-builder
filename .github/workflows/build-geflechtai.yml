@@ -11,20 +11,20 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 46aaebe28e8d02959943c1339b38de055a2e94af
+        default: a3d3fef3665f27a6437589112e4c7bf771671587
         type: string
 
 permissions: {}
 
 concurrency:
-  group: geflechtai-private-ipa-${{ inputs.source_ref || '46aaebe28e8d02959943c1339b38de055a2e94af' }}
+  group: geflechtai-private-ipa-${{ inputs.source_ref || 'a3d3fef3665f27a6437589112e4c7bf771671587' }}
   cancel-in-progress: false
 
 jobs:
   build:
     name: private unsigned archive
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     env:
       SOURCE_REPOSITORY: Nanoth-del/GeflechtAI
@@ -33,11 +33,12 @@ jobs:
       SCHEME: GeflechtAI
       APP_NAME: GeflechtAI
       BUILD_NUMBER: ${{ github.run_number }}
+      LLAMA_CPP_REF: master
 
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '46aaebe28e8d02959943c1339b38de055a2e94af' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'a3d3fef3665f27a6437589112e4c7bf771671587' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -51,7 +52,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '46aaebe28e8d02959943c1339b38de055a2e94af' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'a3d3fef3665f27a6437589112e4c7bf771671587' }}
           SOURCE_TOKEN: ${{ secrets.GeflechtAi }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
@@ -178,6 +179,39 @@ jobs:
           fi
 
           echo "Toolchain validation succeeded."
+
+      - name: Restore llama.xcframework cache privately
+        id: llama-cache
+        uses: actions/cache@704fac72260e90f824b1719532725a3c5349c4c5729aa66a473e1ad86c9e26e9 # v4.3.0
+        with:
+          path: private-source/Vendor/llama.xcframework
+          key: llama-xcframework-${{ env.LLAMA_CPP_REF }}-ios17-${{ hashFiles('private-source/scripts/build-llama-ios.sh') }}
+
+      - name: Build llama.xcframework privately
+        if: steps.llama-cache.outputs.cache-hit != 'true'
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          build_log="$RUNNER_TEMP/geflechtai-llama.log"
+
+          if [[ ! -f scripts/build-llama-ios.sh ]]; then
+            echo "::error::llama.xcframework build script was not found."
+            exit 1
+          fi
+
+          if ! LLAMA_CPP_REF="$LLAMA_CPP_REF" bash scripts/build-llama-ios.sh Vendor/llama.xcframework >"$build_log" 2>&1; then
+            echo "::error::llama.xcframework build failed. Detailed output was withheld."
+            exit 1
+          fi
+
+          if [[ ! -d Vendor/llama.xcframework ]]; then
+            echo "::error::llama.xcframework was not produced."
+            exit 1
+          fi
+
+          echo "llama.xcframework build succeeded."
 
       - name: Resolve Swift packages privately
         working-directory: private-source
