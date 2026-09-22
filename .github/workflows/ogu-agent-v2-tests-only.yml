@@ -1,0 +1,71 @@
+name: OGU v2 isolated XCTest (no IPA or release)
+
+on:
+  push:
+    branches:
+      - feat/ogu-agent-v2-tests-only
+
+permissions: {}
+
+jobs:
+  xctest:
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      SOURCE_SHA: 8de53af4aa286064f08461e613607f3e05ef2f97
+    steps:
+      - name: Verify Xcode toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+      - name: Fetch immutable private source without persisting credentials
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.OGUSUPPORT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$SOURCE_TOKEN" ]]; then
+            echo '::error::Private source credential is not configured.'
+            exit 1
+          fi
+          echo "::add-mask::$SOURCE_TOKEN"
+          mkdir -p private-source
+          git -C private-source init -q
+          git -C private-source remote add origin https://github.com/Nanoth-del/OGU-support.git
+          auth_header="$(printf 'x-access-token:%s' "$SOURCE_TOKEN" | base64 | tr -d '\n')"
+          if ! git -C private-source \
+            -c "http.extraheader=AUTHORIZATION: basic $auth_header" \
+            fetch --no-tags --depth=1 origin "$SOURCE_SHA" \
+            >"$RUNNER_TEMP/ogu-v2-checkout.log" 2>&1; then
+            echo '::error::Private source fetch failed; details withheld.'
+            exit 1
+          fi
+          git -C private-source checkout --detach -q FETCH_HEAD
+          test "$(git -C private-source rev-parse HEAD)" = "$SOURCE_SHA"
+          unset SOURCE_TOKEN auth_header
+          echo 'Immutable private source was fetched successfully.'
+      - name: Compile and run all simulator XCTest privately
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_log="$RUNNER_TEMP/ogu-v2-xctest.log"
+          if ! xcodebuild \
+            -project OsakaGakuinAI.xcodeproj \
+            -scheme OsakaGakuinAI \
+            -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=latest' \
+            -parallel-testing-enabled NO \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO test >"$test_log" 2>&1; then
+            diagnostics="$(grep -E 'error:|Testing failed:|Test Case .* failed|Test Suite .* failed|Unable to find a destination|fatal error:' "$test_log" | sed -E 's#([^[:space:]]*/)?private-source/#<private-source>/#g' | tail -n 40 || true)"
+            if [[ -n "$diagnostics" ]]; then
+              while IFS= read -r line; do echo "::error::$line"; done <<< "$diagnostics"
+            else
+              echo '::error::XCTest failed; diagnostics withheld or unavailable.'
+            fi
+            exit 1
+          fi
+          grep -E 'Executed [0-9]+ tests?|Test Suite .* passed' "$test_log" | tail -n 15 || true
+          echo 'XCTest passed. No source, IPA, archive, or release was published.'
