@@ -11,13 +11,13 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 4b2c99520445a59dc6ca702873bf0aad49bff141
+        default: 5fc028a27fec78d96a608b9b2a201635c1662824
         type: string
 
 permissions: {}
 
 concurrency:
-  group: geflechtai-private-ipa-${{ inputs.source_ref || '4b2c99520445a59dc6ca702873bf0aad49bff141' }}
+  group: geflechtai-private-ipa-${{ inputs.source_ref || '5fc028a27fec78d96a608b9b2a201635c1662824' }}
   cancel-in-progress: false
 
 jobs:
@@ -38,7 +38,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '4b2c99520445a59dc6ca702873bf0aad49bff141' }}
+          SOURCE_REF: ${{ inputs.source_ref || '5fc028a27fec78d96a608b9b2a201635c1662824' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -52,7 +52,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '4b2c99520445a59dc6ca702873bf0aad49bff141' }}
+          SOURCE_REF: ${{ inputs.source_ref || '5fc028a27fec78d96a608b9b2a201635c1662824' }}
           SOURCE_TOKEN: ${{ secrets.GeflechtAi }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
