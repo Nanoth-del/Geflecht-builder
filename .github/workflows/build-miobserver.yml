@@ -11,7 +11,7 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 77a85317238bde1a3544452068a2eadc2a2cd5ff
+        default: 1046aa74abfa9f7864a8a9e38e565e801dba21f5
         type: string
 
 # The workflow does not need an ambient repository GITHUB_TOKEN, so no
@@ -19,7 +19,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: miobserver-private-ipa-${{ inputs.source_ref || '77a85317238bde1a3544452068a2eadc2a2cd5ff' }}
+  group: miobserver-private-ipa-${{ inputs.source_ref || '1046aa74abfa9f7864a8a9e38e565e801dba21f5' }}
   cancel-in-progress: false
 
 jobs:
@@ -38,7 +38,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '77a85317238bde1a3544452068a2eadc2a2cd5ff' }}
+          SOURCE_REF: ${{ inputs.source_ref || '1046aa74abfa9f7864a8a9e38e565e801dba21f5' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -52,7 +52,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '77a85317238bde1a3544452068a2eadc2a2cd5ff' }}
+          SOURCE_REF: ${{ inputs.source_ref || '1046aa74abfa9f7864a8a9e38e565e801dba21f5' }}
           SOURCE_TOKEN: ${{ secrets.ECG }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
