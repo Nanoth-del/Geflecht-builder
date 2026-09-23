@@ -573,7 +573,7 @@ jobs:
               --target "$source_sha" \
               --title "$APP_NAME $release_tag" \
               --notes "Unsigned iOS IPA. Build ${BUILD_NUMBER}. Re-sign before installation on a physical iPhone." \
-              --prerelease \
+              --latest \
               >"$release_log" 2>&1; then
 
             echo "::error::Private Release publication failed. Detailed output was withheld."
