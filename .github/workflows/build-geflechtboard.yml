@@ -11,13 +11,13 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 8def3cacabfefc2e2c4a9e3c4c45fec5fc47155e
+        default: 3a2575a864852718fe28563aea88a59b5fd5cddf
         type: string
 
 permissions: {}
 
 concurrency:
-  group: geflechtboard-private-ipa-${{ inputs.source_ref || '8def3cacabfefc2e2c4a9e3c4c45fec5fc47155e' }}
+  group: geflechtboard-private-ipa-${{ inputs.source_ref || '3a2575a864852718fe28563aea88a59b5fd5cddf' }}
   cancel-in-progress: false
 
 jobs:
@@ -37,7 +37,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '8def3cacabfefc2e2c4a9e3c4c45fec5fc47155e' }}
+          SOURCE_REF: ${{ inputs.source_ref || '3a2575a864852718fe28563aea88a59b5fd5cddf' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -51,7 +51,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '8def3cacabfefc2e2c4a9e3c4c45fec5fc47155e' }}
+          SOURCE_REF: ${{ inputs.source_ref || '3a2575a864852718fe28563aea88a59b5fd5cddf' }}
           SOURCE_TOKEN: ${{ secrets.GeflechtBoard }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
