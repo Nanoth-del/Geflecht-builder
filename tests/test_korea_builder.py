@@ -2,14 +2,14 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW = ROOT / '.github' / 'workflows' / 'build-haruai.yml'
+WORKFLOW = ROOT / '.github' / 'workflows' / 'build-korea.yml'
 
-class HaruAIBuilderTests(unittest.TestCase):
-    def test_haruai_workflow_is_pinned_and_private(self):
+class KoreaBuilderTests(unittest.TestCase):
+    def test_korea_workflow_is_pinned_and_private(self):
         source = WORKFLOW.read_text(encoding='utf-8')
-        for expected in ['Nanoth-del/HaruAI', 'secrets.korea',
+        for expected in ['Nanoth-del/Korea', 'secrets.KOREA',
                          'SOURCE_REF', 'ios/App/App.xcodeproj', 'SCHEME: App',
-                         'APP_NAME: App', 'RELEASE_REPOSITORY: Nanoth-del/HaruAI']:
+                         'APP_NAME: App', 'RELEASE_REPOSITORY: Nanoth-del/Korea']:
             self.assertIn(expected, source)
         self.assertNotIn('SOURCE_REPOSITORY: ${{ inputs.', source)
         self.assertNotIn('RELEASE_REPOSITORY: ${{ inputs.', source)

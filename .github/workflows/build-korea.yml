@@ -1,4 +1,4 @@
-name: HaruAI private unsigned IPA build
+name: Korea private unsigned IPA build
 
 on:
   push:
@@ -17,7 +17,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: haruai-private-ipa-${{ inputs.source_ref || 'f23e2c20e76d88a5198152619a83c7caf44e0823' }}
+  group: korea-private-ipa-${{ inputs.source_ref || 'f23e2c20e76d88a5198152619a83c7caf44e0823' }}
   cancel-in-progress: false
 
 jobs:
@@ -27,8 +27,8 @@ jobs:
     timeout-minutes: 60
 
     env:
-      SOURCE_REPOSITORY: Nanoth-del/HaruAI
-      RELEASE_REPOSITORY: Nanoth-del/HaruAI
+      SOURCE_REPOSITORY: Nanoth-del/Korea
+      RELEASE_REPOSITORY: Nanoth-del/Korea
       PROJECT_PATH: ios/App/App.xcodeproj
       SCHEME: App
       APP_NAME: App
@@ -53,7 +53,7 @@ jobs:
       - name: Checkout private source without publishing metadata
         env:
           SOURCE_REF: ${{ inputs.source_ref || 'f23e2c20e76d88a5198152619a83c7caf44e0823' }}
-          SOURCE_TOKEN: ${{ secrets.korea }}
+          SOURCE_TOKEN: ${{ secrets.KOREA }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
           GIT_TERMINAL_PROMPT: "0"
@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          checkout_log="$RUNNER_TEMP/haruai-checkout.log"
+          checkout_log="$RUNNER_TEMP/korea-checkout.log"
           source_path="$GITHUB_WORKSPACE/private-source"
 
           if [[ -z "$SOURCE_TOKEN" ]]; then
@@ -142,7 +142,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          prepare_log="$RUNNER_TEMP/haruai-prepare.log"
+          prepare_log="$RUNNER_TEMP/korea-prepare.log"
 
           if ! npm ci >"$prepare_log" 2>&1; then
             echo "::error::npm dependency installation failed. Detailed output was withheld."
@@ -178,7 +178,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          toolchain_log="$RUNNER_TEMP/haruai-toolchain.log"
+          toolchain_log="$RUNNER_TEMP/korea-toolchain.log"
 
           if ! xcodebuild -version >"$toolchain_log" 2>&1; then
             echo "::error::Xcode toolchain validation failed. Detailed output was withheld."
@@ -208,7 +208,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          resolve_log="$RUNNER_TEMP/haruai-resolve.log"
+          resolve_log="$RUNNER_TEMP/korea-resolve.log"
 
           if ! xcodebuild \
             -project "$PROJECT_PATH" \
@@ -230,8 +230,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          clean_log="$RUNNER_TEMP/haruai-clean.log"
-          derived_data="$RUNNER_TEMP/HaruAI-DerivedData"
+          clean_log="$RUNNER_TEMP/korea-clean.log"
+          derived_data="$RUNNER_TEMP/Korea-DerivedData"
 
           rm -rf "$derived_data"
 
@@ -261,9 +261,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          build_log="$RUNNER_TEMP/haruai-xcodebuild.log"
-          archive_path="$RUNNER_TEMP/HaruAI.xcarchive"
-          derived_data="$RUNNER_TEMP/HaruAI-DerivedData"
+          build_log="$RUNNER_TEMP/korea-xcodebuild.log"
+          archive_path="$RUNNER_TEMP/Korea.xcarchive"
+          derived_data="$RUNNER_TEMP/Korea-DerivedData"
 
           if [[ ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::Builder run number was not a positive integer."
@@ -322,8 +322,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          app_path="$RUNNER_TEMP/HaruAI.xcarchive/Products/Applications/$APP_NAME.app"
-          ipa_root="$RUNNER_TEMP/haruai-ipa"
+          app_path="$RUNNER_TEMP/Korea.xcarchive/Products/Applications/$APP_NAME.app"
+          ipa_root="$RUNNER_TEMP/korea-ipa"
           ipa_path="$RUNNER_TEMP/${APP_NAME}-unsigned.ipa"
 
           if [[ ! -d "$app_path" ]]; then
@@ -353,7 +353,7 @@ jobs:
           )
 
           if ! unzip -Z1 "$ipa_path" \
-            >"$RUNNER_TEMP/haruai-ipa-entries.log" 2>&1; then
+            >"$RUNNER_TEMP/korea-ipa-entries.log" 2>&1; then
 
             echo "::error::IPA packaging validation failed."
             exit 1
@@ -367,9 +367,9 @@ jobs:
           set -euo pipefail
 
           ipa_path="$RUNNER_TEMP/${APP_NAME}-unsigned.ipa"
-          audit_root="$RUNNER_TEMP/haruai-ipa-audit"
-          audit_log="$RUNNER_TEMP/haruai-ipa-audit.log"
-          entries_log="$RUNNER_TEMP/haruai-ipa-entries.log"
+          audit_root="$RUNNER_TEMP/korea-ipa-audit"
+          audit_log="$RUNNER_TEMP/korea-ipa-audit.log"
+          entries_log="$RUNNER_TEMP/korea-ipa-entries.log"
 
           app_path="$audit_root/Payload/$APP_NAME.app"
           app_binary="$app_path/$APP_NAME"
@@ -488,7 +488,7 @@ jobs:
           fi
 
           if ! shasum -a 256 "$ipa_path" \
-            >"$RUNNER_TEMP/haruai-ipa.sha256" 2>&1; then
+            >"$RUNNER_TEMP/korea-ipa.sha256" 2>&1; then
 
             echo "::error::IPA digest generation failed."
             exit 1
@@ -498,15 +498,15 @@ jobs:
 
       - name: Publish and verify private Release asset
         env:
-          RELEASE_TOKEN: ${{ secrets.korea }}
+          RELEASE_TOKEN: ${{ secrets.KOREA }}
         shell: bash
         run: |
           set -euo pipefail
 
           ipa_path="$RUNNER_TEMP/${APP_NAME}-unsigned.ipa"
-          digest_file="$RUNNER_TEMP/haruai-ipa.sha256"
-          release_log="$RUNNER_TEMP/haruai-release.log"
-          verify_dir="$RUNNER_TEMP/haruai-release-verify"
+          digest_file="$RUNNER_TEMP/korea-ipa.sha256"
+          release_log="$RUNNER_TEMP/korea-release.log"
+          verify_dir="$RUNNER_TEMP/korea-release-verify"
 
           source_sha="$(
             git \
@@ -581,15 +581,15 @@ jobs:
 
           rm -rf \
             "$GITHUB_WORKSPACE/private-source" \
-            "$RUNNER_TEMP/HaruAI.xcarchive" \
-            "$RUNNER_TEMP/HaruAI-DerivedData" \
-            "$RUNNER_TEMP/haruai-ipa" \
-            "$RUNNER_TEMP/haruai-ipa-audit" \
-            "$RUNNER_TEMP/haruai-release-verify"
+            "$RUNNER_TEMP/Korea.xcarchive" \
+            "$RUNNER_TEMP/Korea-DerivedData" \
+            "$RUNNER_TEMP/korea-ipa" \
+            "$RUNNER_TEMP/korea-ipa-audit" \
+            "$RUNNER_TEMP/korea-release-verify"
 
           rm -f \
-            "$RUNNER_TEMP"/haruai-*.log \
-            "$RUNNER_TEMP"/haruai-*.sha256 \
+            "$RUNNER_TEMP"/korea-*.log \
+            "$RUNNER_TEMP"/korea-*.sha256 \
             "$RUNNER_TEMP/${APP_NAME}-unsigned.ipa"
 
           echo "Private working data removed."
