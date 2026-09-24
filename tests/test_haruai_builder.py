@@ -7,7 +7,7 @@ WORKFLOW = ROOT / '.github' / 'workflows' / 'build-haruai.yml'
 class HaruAIBuilderTests(unittest.TestCase):
     def test_haruai_workflow_is_pinned_and_private(self):
         source = WORKFLOW.read_text(encoding='utf-8')
-        for expected in ['Nanoth-del/HaruAI', 'secrets.HaruAI',
+        for expected in ['Nanoth-del/HaruAI', 'secrets.korea',
                          'SOURCE_REF', 'ios/App/App.xcodeproj', 'SCHEME: App',
                          'APP_NAME: App', 'RELEASE_REPOSITORY: Nanoth-del/HaruAI']:
             self.assertIn(expected, source)

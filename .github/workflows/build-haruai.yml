@@ -11,13 +11,13 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 443bbc625c926cff43b0a73b0e8dae586a395d34
+        default: f23e2c20e76d88a5198152619a83c7caf44e0823
         type: string
 
 permissions: {}
 
 concurrency:
-  group: haruai-private-ipa-${{ inputs.source_ref || '443bbc625c926cff43b0a73b0e8dae586a395d34' }}
+  group: haruai-private-ipa-${{ inputs.source_ref || 'f23e2c20e76d88a5198152619a83c7caf44e0823' }}
   cancel-in-progress: false
 
 jobs:
@@ -38,7 +38,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '443bbc625c926cff43b0a73b0e8dae586a395d34' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'f23e2c20e76d88a5198152619a83c7caf44e0823' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -52,8 +52,8 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '443bbc625c926cff43b0a73b0e8dae586a395d34' }}
-          SOURCE_TOKEN: ${{ secrets.HaruAI }}
+          SOURCE_REF: ${{ inputs.source_ref || 'f23e2c20e76d88a5198152619a83c7caf44e0823' }}
+          SOURCE_TOKEN: ${{ secrets.korea }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
           GIT_TERMINAL_PROMPT: "0"
@@ -498,7 +498,7 @@ jobs:
 
       - name: Publish and verify private Release asset
         env:
-          RELEASE_TOKEN: ${{ secrets.HaruAI }}
+          RELEASE_TOKEN: ${{ secrets.korea }}
         shell: bash
         run: |
           set -euo pipefail
