@@ -218,6 +218,22 @@ jobs:
             -skipPackagePluginValidation \
             >"$resolve_log" 2>&1; then
 
+            sanitized_diagnostics="$(
+              grep -E \
+                'error:|fatal|not found|does not contain|Could not|could not|failed|invalid' \
+                "$resolve_log" |
+                sed -E \
+                  's#([^[:space:]]*/)?private-source/#<private-source>/#g' |
+                tail -n 40 ||
+                true
+            )"
+
+            if [[ -n "$sanitized_diagnostics" ]]; then
+              while IFS= read -r diagnostic; do
+                echo "::error::$diagnostic"
+              done <<< "$sanitized_diagnostics"
+            fi
+
             echo "::error::Swift package resolution failed. Detailed output was withheld."
             exit 1
           fi
