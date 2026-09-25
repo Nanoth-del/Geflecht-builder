@@ -537,7 +537,6 @@ jobs:
               --title "$APP_NAME $release_tag" \
               --notes "Unsigned iOS IPA. Build ${BUILD_NUMBER}. Re-sign before installation on a physical iPhone." \
               --prerelease \
-              --latest \
               >"$release_log" 2>&1; then
 
             echo "::error::Private Release publication failed. Detailed output was withheld."
@@ -573,10 +572,34 @@ jobs:
             exit 1
           fi
 
+          # 浮動 "latest" リリースを今回のビルドへ付け替える。
+          # releases/download/latest/ から常に最新IPAを取得できる。
+          GH_TOKEN="$RELEASE_TOKEN" \
+            gh release delete latest \
+              --repo "$RELEASE_REPOSITORY" \
+              --cleanup-tag \
+              --yes \
+              >>"$release_log" 2>&1 || true
+
+          if ! GH_TOKEN="$RELEASE_TOKEN" \
+            gh release create latest \
+              "$ipa_path" \
+              --repo "$RELEASE_REPOSITORY" \
+              --target "$source_sha" \
+              --title "$APP_NAME latest (build ${BUILD_NUMBER})" \
+              --notes "Newest private build. This run: $release_tag. Re-sign before installation on a physical iPhone." \
+              --prerelease \
+              >>"$release_log" 2>&1; then
+
+            echo "::error::Floating latest Release update failed. Detailed output was withheld."
+            exit 1
+          fi
+
           unset RELEASE_TOKEN
 
           echo "Private Release publication and verification succeeded."
           echo "Release tag: $release_tag"
+          echo "Latest release tag: latest"
           echo "SHA256: $actual_digest"
 
       - name: Remove private working data
