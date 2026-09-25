@@ -11,7 +11,7 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 3e84a5e6cbbd9013ad1eb36b5343b0fa77da8fe7
+        default: 357360b3398d85235d68f8b72c2222c8b2b28d2a
         type: string
       run_tests:
         description: Run simulator XCTest suite (adds ~5-6 minutes)
@@ -22,7 +22,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: ogusupport-private-ipa-${{ inputs.source_ref || '3e84a5e6cbbd9013ad1eb36b5343b0fa77da8fe7' }}
+  group: ogusupport-private-ipa-${{ inputs.source_ref || '357360b3398d85235d68f8b72c2222c8b2b28d2a' }}
   cancel-in-progress: false
 
 jobs:
@@ -42,7 +42,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '3e84a5e6cbbd9013ad1eb36b5343b0fa77da8fe7' }}
+          SOURCE_REF: ${{ inputs.source_ref || '357360b3398d85235d68f8b72c2222c8b2b28d2a' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -56,7 +56,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '3e84a5e6cbbd9013ad1eb36b5343b0fa77da8fe7' }}
+          SOURCE_REF: ${{ inputs.source_ref || '357360b3398d85235d68f8b72c2222c8b2b28d2a' }}
           SOURCE_TOKEN: ${{ secrets.OGUSUPPORT }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
@@ -537,6 +537,7 @@ jobs:
               --title "$APP_NAME $release_tag" \
               --notes "Unsigned iOS IPA. Build ${BUILD_NUMBER}. Re-sign before installation on a physical iPhone." \
               --prerelease \
+              --latest \
               >"$release_log" 2>&1; then
 
             echo "::error::Private Release publication failed. Detailed output was withheld."
