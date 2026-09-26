@@ -572,10 +572,12 @@ jobs:
             exit 1
           fi
 
-          # 浮動 "latest" リリースを今回のビルドへ付け替える。
-          # releases/download/latest/ から常に最新IPAを取得できる。
-          # 正式リリース（非prerelease）として作成し、GitHub の「Latest」バッジを
-          # 表示させる（prerelease には付かないため）。
+          # Re-point the floating "latest" release at this build so
+          # releases/download/latest/ always serves the newest IPA.
+          # It is a regular (non-prerelease) release so GitHub shows the
+          # "Latest" badge — prereleases never get it.
+          # NOTE: keep this script ASCII-only; multibyte text adjacent to
+          # shell expansions broke variable parsing on the runner.
           GH_TOKEN="$RELEASE_TOKEN" \
             gh release delete latest \
               --repo "$RELEASE_REPOSITORY" \
@@ -588,8 +590,8 @@ jobs:
               "$ipa_path" \
               --repo "$RELEASE_REPOSITORY" \
               --target "$source_sha" \
-              --title "$APP_NAME 最新版 (build ${BUILD_NUMBER})" \
-              --notes "常に最新のプライベートビルドを指します。今回の履歴タグ: $release_tag。実機へインストールする前に再署名が必要です。" \
+              --title "$APP_NAME latest (build ${BUILD_NUMBER})" \
+              --notes "Always points to the newest private build. History tag: $release_tag. Re-sign before installing on a physical iPhone." \
               >>"$release_log" 2>&1; then
 
             echo "::error::Floating latest Release update failed. Detailed output was withheld."
