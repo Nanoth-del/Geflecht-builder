@@ -11,7 +11,7 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 357360b3398d85235d68f8b72c2222c8b2b28d2a
+        default: abe5d5aaecdf8508d0a77efa8666de236226236e
         type: string
       run_tests:
         description: Run simulator XCTest suite (adds ~5-6 minutes)
@@ -22,7 +22,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: ogusupport-private-ipa-${{ inputs.source_ref || '357360b3398d85235d68f8b72c2222c8b2b28d2a' }}
+  group: ogusupport-private-ipa-${{ inputs.source_ref || 'abe5d5aaecdf8508d0a77efa8666de236226236e' }}
   cancel-in-progress: false
 
 jobs:
@@ -42,7 +42,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '357360b3398d85235d68f8b72c2222c8b2b28d2a' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'abe5d5aaecdf8508d0a77efa8666de236226236e' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -56,7 +56,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '357360b3398d85235d68f8b72c2222c8b2b28d2a' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'abe5d5aaecdf8508d0a77efa8666de236226236e' }}
           SOURCE_TOKEN: ${{ secrets.OGUSUPPORT }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
@@ -574,6 +574,8 @@ jobs:
 
           # 浮動 "latest" リリースを今回のビルドへ付け替える。
           # releases/download/latest/ から常に最新IPAを取得できる。
+          # 正式リリース（非prerelease）として作成し、GitHub の「Latest」バッジを
+          # 表示させる（prerelease には付かないため）。
           GH_TOKEN="$RELEASE_TOKEN" \
             gh release delete latest \
               --repo "$RELEASE_REPOSITORY" \
@@ -586,9 +588,8 @@ jobs:
               "$ipa_path" \
               --repo "$RELEASE_REPOSITORY" \
               --target "$source_sha" \
-              --title "$APP_NAME latest (build ${BUILD_NUMBER})" \
-              --notes "Newest private build. This run: $release_tag. Re-sign before installation on a physical iPhone." \
-              --prerelease \
+              --title "$APP_NAME 最新版 (build ${BUILD_NUMBER})" \
+              --notes "常に最新のプライベートビルドを指します。今回の履歴タグ: $release_tag。実機へインストールする前に再署名が必要です。" \
               >>"$release_log" 2>&1; then
 
             echo "::error::Floating latest Release update failed. Detailed output was withheld."
