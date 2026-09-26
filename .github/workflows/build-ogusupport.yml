@@ -11,7 +11,7 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: abe5d5aaecdf8508d0a77efa8666de236226236e
+        default: 572f82e8b3144cf633e965a07d1acbd78e107468
         type: string
       run_tests:
         description: Run simulator XCTest suite (adds ~5-6 minutes)
@@ -22,7 +22,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: ogusupport-private-ipa-${{ inputs.source_ref || 'abe5d5aaecdf8508d0a77efa8666de236226236e' }}
+  group: ogusupport-private-ipa-${{ inputs.source_ref || '572f82e8b3144cf633e965a07d1acbd78e107468' }}
   cancel-in-progress: false
 
 jobs:
@@ -42,7 +42,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || 'abe5d5aaecdf8508d0a77efa8666de236226236e' }}
+          SOURCE_REF: ${{ inputs.source_ref || '572f82e8b3144cf633e965a07d1acbd78e107468' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -56,7 +56,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || 'abe5d5aaecdf8508d0a77efa8666de236226236e' }}
+          SOURCE_REF: ${{ inputs.source_ref || '572f82e8b3144cf633e965a07d1acbd78e107468' }}
           SOURCE_TOKEN: ${{ secrets.OGUSUPPORT }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
@@ -520,7 +520,6 @@ jobs:
           )"
 
           short_sha="${source_sha:0:12}"
-          release_tag="private-build-${GITHUB_RUN_NUMBER}-${short_sha}"
 
           if [[ -z "$RELEASE_TOKEN" ]]; then
             echo "::error::The protected Release-write credential is not configured."
@@ -529,53 +528,10 @@ jobs:
 
           echo "::add-mask::$RELEASE_TOKEN"
 
-          if ! GH_TOKEN="$RELEASE_TOKEN" \
-            gh release create "$release_tag" \
-              "$ipa_path" \
-              --repo "$RELEASE_REPOSITORY" \
-              --target "$source_sha" \
-              --title "$APP_NAME $release_tag" \
-              --notes "Unsigned iOS IPA. Build ${BUILD_NUMBER}. Re-sign before installation on a physical iPhone." \
-              --prerelease \
-              >"$release_log" 2>&1; then
-
-            echo "::error::Private Release publication failed. Detailed output was withheld."
-            exit 1
-          fi
-
-          rm -rf "$verify_dir"
-          mkdir -p "$verify_dir"
-
-          if ! GH_TOKEN="$RELEASE_TOKEN" \
-            gh release download "$release_tag" \
-              --repo "$RELEASE_REPOSITORY" \
-              --pattern "${APP_NAME}-unsigned.ipa" \
-              --dir "$verify_dir" \
-              >>"$release_log" 2>&1; then
-
-            echo "::error::Private Release asset verification download failed."
-            exit 1
-          fi
-
-          expected_digest="$(
-            awk '{print $1}' "$digest_file"
-          )"
-
-          actual_digest="$(
-            shasum -a 256 \
-              "$verify_dir/${APP_NAME}-unsigned.ipa" |
-              awk '{print $1}'
-          )"
-
-          if [[ "$expected_digest" != "$actual_digest" ]]; then
-            echo "::error::Private Release asset digest verification failed."
-            exit 1
-          fi
-
-          # Re-point the floating "latest" release at this build so
-          # releases/download/latest/ always serves the newest IPA.
-          # It is a regular (non-prerelease) release so GitHub shows the
-          # "Latest" badge — prereleases never get it.
+          # Only the floating "latest" release is published — it is
+          # re-created on every build so releases/download/latest/ always
+          # serves the newest IPA. It is a regular (non-prerelease)
+          # release so GitHub shows the "Latest" badge.
           # NOTE: keep this script ASCII-only; multibyte text adjacent to
           # shell expansions broke variable parsing on the runner.
           GH_TOKEN="$RELEASE_TOKEN" \
@@ -591,18 +547,46 @@ jobs:
               --repo "$RELEASE_REPOSITORY" \
               --target "$source_sha" \
               --title "$APP_NAME latest (build ${BUILD_NUMBER})" \
-              --notes "Always points to the newest private build. History tag: $release_tag. Re-sign before installing on a physical iPhone." \
+              --notes "Newest private build from source $short_sha. Build ${BUILD_NUMBER}. Re-sign before installing on a physical iPhone." \
+              >"$release_log" 2>&1; then
+
+            echo "::error::Latest Release publication failed. Detailed output was withheld."
+            exit 1
+          fi
+
+          rm -rf "$verify_dir"
+          mkdir -p "$verify_dir"
+
+          if ! GH_TOKEN="$RELEASE_TOKEN" \
+            gh release download latest \
+              --repo "$RELEASE_REPOSITORY" \
+              --pattern "${APP_NAME}-unsigned.ipa" \
+              --dir "$verify_dir" \
               >>"$release_log" 2>&1; then
 
-            echo "::error::Floating latest Release update failed. Detailed output was withheld."
+            echo "::error::Latest Release asset verification download failed."
+            exit 1
+          fi
+
+          expected_digest="$(
+            awk '{print $1}' "$digest_file"
+          )"
+
+          actual_digest="$(
+            shasum -a 256 \
+              "$verify_dir/${APP_NAME}-unsigned.ipa" |
+              awk '{print $1}'
+          )"
+
+          if [[ "$expected_digest" != "$actual_digest" ]]; then
+            echo "::error::Latest Release asset digest verification failed."
             exit 1
           fi
 
           unset RELEASE_TOKEN
 
-          echo "Private Release publication and verification succeeded."
-          echo "Release tag: $release_tag"
-          echo "Latest release tag: latest"
+          echo "Latest Release publication and verification succeeded."
+          echo "Release tag: latest (source $short_sha)"
           echo "SHA256: $actual_digest"
 
       - name: Remove private working data
