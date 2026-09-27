@@ -1,17 +1,17 @@
-name: Genesis private unsigned IPA build
+name: GeflechtSeismic private unsigned IPA build
 
 on:
   push:
     branches:
       - main
     paths:
-      - '.github/workflows/build-genesis.yml'
+      - '.github/workflows/build-geflechtseismic.yml'
   workflow_dispatch:
     inputs:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 6c7979dc2c80e78c4a50388ef3c210ee60822c82
+        default: 1dd5664521f4edbe9bc6e153a1b93c2376257e3a
         type: string
 
 # The workflow does not need an ambient repository GITHUB_TOKEN, so no
@@ -19,7 +19,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: genesis-private-ipa-${{ inputs.source_ref || '6c7979dc2c80e78c4a50388ef3c210ee60822c82' }}
+  group: geflechtseismic-private-ipa-${{ inputs.source_ref || '1dd5664521f4edbe9bc6e153a1b93c2376257e3a' }}
   cancel-in-progress: false
 
 jobs:
@@ -30,15 +30,15 @@ jobs:
     env:
       SOURCE_REPOSITORY: Nanoth-del/GeflechtGennesis
       RELEASE_REPOSITORY: Nanoth-del/GeflechtGennesis
-      PROJECT_PATH: Genesis.xcodeproj
-      SCHEME: Genesis
-      APP_NAME: Genesis
+      PROJECT_PATH: GeflechtSeismic.xcodeproj
+      SCHEME: GeflechtSeismic
+      APP_NAME: GeflechtSeismic
       BUILD_NUMBER: ${{ github.run_number }}
 
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '6c7979dc2c80e78c4a50388ef3c210ee60822c82' }}
+          SOURCE_REF: ${{ inputs.source_ref || '1dd5664521f4edbe9bc6e153a1b93c2376257e3a' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -52,7 +52,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '6c7979dc2c80e78c4a50388ef3c210ee60822c82' }}
+          SOURCE_REF: ${{ inputs.source_ref || '1dd5664521f4edbe9bc6e153a1b93c2376257e3a' }}
           SOURCE_TOKEN: ${{ secrets.GENESIS }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          checkout_log="$RUNNER_TEMP/genesis-checkout.log"
+          checkout_log="$RUNNER_TEMP/geflechtseismic-checkout.log"
           source_path="$GITHUB_WORKSPACE/private-source"
 
           if [[ -z "$SOURCE_TOKEN" ]]; then
@@ -123,7 +123,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          toolchain_log="$RUNNER_TEMP/genesis-toolchain.log"
+          toolchain_log="$RUNNER_TEMP/geflechtseismic-toolchain.log"
 
           if ! xcodebuild -version >"$toolchain_log" 2>&1; then
             echo "::error::Xcode toolchain validation failed. Detailed output was withheld."
@@ -149,7 +149,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          resolve_log="$RUNNER_TEMP/genesis-resolve.log"
+          resolve_log="$RUNNER_TEMP/geflechtseismic-resolve.log"
           if ! xcodebuild \
             -project "$PROJECT_PATH" \
             -scheme "$SCHEME" \
@@ -168,8 +168,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          clean_log="$RUNNER_TEMP/genesis-clean.log"
-          derived_data="$RUNNER_TEMP/Genesis-DerivedData"
+          clean_log="$RUNNER_TEMP/geflechtseismic-clean.log"
+          derived_data="$RUNNER_TEMP/GeflechtSeismic-DerivedData"
           if ! xcodebuild \
             -project "$PROJECT_PATH" \
             -scheme "$SCHEME" \
@@ -194,9 +194,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          build_log="$RUNNER_TEMP/genesis-xcodebuild.log"
-          archive_path="$RUNNER_TEMP/Genesis.xcarchive"
-          derived_data="$RUNNER_TEMP/Genesis-DerivedData"
+          build_log="$RUNNER_TEMP/geflechtseismic-xcodebuild.log"
+          archive_path="$RUNNER_TEMP/GeflechtSeismic.xcarchive"
+          derived_data="$RUNNER_TEMP/GeflechtSeismic-DerivedData"
 
           if [[ ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::Builder run number was not a positive integer."
@@ -247,8 +247,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          app_path="$RUNNER_TEMP/Genesis.xcarchive/Products/Applications/$APP_NAME.app"
-          ipa_root="$RUNNER_TEMP/genesis-ipa"
+          app_path="$RUNNER_TEMP/GeflechtSeismic.xcarchive/Products/Applications/$APP_NAME.app"
+          ipa_root="$RUNNER_TEMP/geflechtseismic-ipa"
           ipa_path="$RUNNER_TEMP/${APP_NAME}-unsigned.ipa"
 
           if [[ ! -d "$app_path" ]]; then
@@ -265,7 +265,7 @@ jobs:
             ditto -c -k --sequesterRsrc --keepParent Payload "$ipa_path"
           )
 
-          if ! unzip -Z1 "$ipa_path" >"$RUNNER_TEMP/genesis-ipa-entries.log" 2>&1; then
+          if ! unzip -Z1 "$ipa_path" >"$RUNNER_TEMP/geflechtseismic-ipa-entries.log" 2>&1; then
             echo "::error::IPA packaging validation failed."
             exit 1
           fi
@@ -278,9 +278,9 @@ jobs:
           set -euo pipefail
 
           ipa_path="$RUNNER_TEMP/${APP_NAME}-unsigned.ipa"
-          audit_root="$RUNNER_TEMP/genesis-ipa-audit"
-          audit_log="$RUNNER_TEMP/genesis-ipa-audit.log"
-          entries_log="$RUNNER_TEMP/genesis-ipa-entries.log"
+          audit_root="$RUNNER_TEMP/geflechtseismic-ipa-audit"
+          audit_log="$RUNNER_TEMP/geflechtseismic-ipa-audit.log"
+          entries_log="$RUNNER_TEMP/geflechtseismic-ipa-entries.log"
           app_path="$audit_root/Payload/$APP_NAME.app"
           app_binary="$app_path/$APP_NAME"
 
@@ -343,7 +343,7 @@ jobs:
             exit 1
           fi
 
-          if ! shasum -a 256 "$ipa_path" >"$RUNNER_TEMP/genesis-ipa.sha256" 2>&1; then
+          if ! shasum -a 256 "$ipa_path" >"$RUNNER_TEMP/geflechtseismic-ipa.sha256" 2>&1; then
             echo "::error::IPA digest generation failed."
             exit 1
           fi
@@ -358,9 +358,9 @@ jobs:
           set -euo pipefail
 
           ipa_path="$RUNNER_TEMP/${APP_NAME}-unsigned.ipa"
-          digest_file="$RUNNER_TEMP/genesis-ipa.sha256"
-          release_log="$RUNNER_TEMP/genesis-release.log"
-          verify_dir="$RUNNER_TEMP/genesis-release-verify"
+          digest_file="$RUNNER_TEMP/geflechtseismic-ipa.sha256"
+          release_log="$RUNNER_TEMP/geflechtseismic-release.log"
+          verify_dir="$RUNNER_TEMP/geflechtseismic-release-verify"
           source_sha="$(git -C "$GITHUB_WORKSPACE/private-source" rev-parse HEAD)"
           short_sha="${source_sha:0:12}"
           release_tag="private-build-${GITHUB_RUN_NUMBER}-${short_sha}"
@@ -407,11 +407,11 @@ jobs:
         shell: bash
         run: |
           rm -rf "$GITHUB_WORKSPACE/private-source"
-          rm -rf "$RUNNER_TEMP/Genesis.xcarchive"
-          rm -rf "$RUNNER_TEMP/Genesis-DerivedData"
-          rm -rf "$RUNNER_TEMP/genesis-ipa"
-          rm -rf "$RUNNER_TEMP/genesis-ipa-audit"
-          rm -rf "$RUNNER_TEMP/genesis-release-verify"
-          rm -f "$RUNNER_TEMP/Genesis-unsigned.ipa"
-          rm -f "$RUNNER_TEMP"/genesis-*.log
-          rm -f "$RUNNER_TEMP"/genesis-ipa.sha256
+          rm -rf "$RUNNER_TEMP/GeflechtSeismic.xcarchive"
+          rm -rf "$RUNNER_TEMP/GeflechtSeismic-DerivedData"
+          rm -rf "$RUNNER_TEMP/geflechtseismic-ipa"
+          rm -rf "$RUNNER_TEMP/geflechtseismic-ipa-audit"
+          rm -rf "$RUNNER_TEMP/geflechtseismic-release-verify"
+          rm -f "$RUNNER_TEMP/GeflechtSeismic-unsigned.ipa"
+          rm -f "$RUNNER_TEMP"/geflechtseismic-*.log
+          rm -f "$RUNNER_TEMP"/geflechtseismic-ipa.sha256
