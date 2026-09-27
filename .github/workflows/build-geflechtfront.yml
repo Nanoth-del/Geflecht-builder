@@ -1,17 +1,17 @@
-name: GeflechtSeismic private unsigned IPA build
+name: GeflechtFront private unsigned IPA build
 
 on:
   push:
     branches:
       - main
     paths:
-      - '.github/workflows/build-geflechtseismic.yml'
+      - '.github/workflows/build-geflechtfront.yml'
   workflow_dispatch:
     inputs:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 3ce1b02b74718ed6b7b521bd99682768fc7713c6
+        default: 79154f5b7c75f2daae117180d8391b523ff2efa3
         type: string
 
 # The workflow does not need an ambient repository GITHUB_TOKEN, so no
@@ -19,7 +19,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: geflechtseismic-private-ipa-${{ inputs.source_ref || '3ce1b02b74718ed6b7b521bd99682768fc7713c6' }}
+  group: geflechtfront-private-ipa-${{ inputs.source_ref || '79154f5b7c75f2daae117180d8391b523ff2efa3' }}
   cancel-in-progress: false
 
 jobs:
@@ -30,15 +30,15 @@ jobs:
     env:
       SOURCE_REPOSITORY: Nanoth-del/GeflechtGennesis
       RELEASE_REPOSITORY: Nanoth-del/GeflechtGennesis
-      PROJECT_PATH: GeflechtSeismic.xcodeproj
-      SCHEME: GeflechtSeismic
-      APP_NAME: GeflechtSeismic
+      PROJECT_PATH: GeflechtFront.xcodeproj
+      SCHEME: GeflechtFront
+      APP_NAME: GeflechtFront
       BUILD_NUMBER: ${{ github.run_number }}
 
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '3ce1b02b74718ed6b7b521bd99682768fc7713c6' }}
+          SOURCE_REF: ${{ inputs.source_ref || '79154f5b7c75f2daae117180d8391b523ff2efa3' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -52,7 +52,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '3ce1b02b74718ed6b7b521bd99682768fc7713c6' }}
+          SOURCE_REF: ${{ inputs.source_ref || '79154f5b7c75f2daae117180d8391b523ff2efa3' }}
           SOURCE_TOKEN: ${{ secrets.GENESIS }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
@@ -61,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          checkout_log="$RUNNER_TEMP/geflechtseismic-checkout.log"
+          checkout_log="$RUNNER_TEMP/geflechtfront-checkout.log"
           source_path="$GITHUB_WORKSPACE/private-source"
 
           if [[ -z "$SOURCE_TOKEN" ]]; then
@@ -123,7 +123,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          toolchain_log="$RUNNER_TEMP/geflechtseismic-toolchain.log"
+          toolchain_log="$RUNNER_TEMP/geflechtfront-toolchain.log"
 
           if ! xcodebuild -version >"$toolchain_log" 2>&1; then
             echo "::error::Xcode toolchain validation failed. Detailed output was withheld."
@@ -149,7 +149,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          resolve_log="$RUNNER_TEMP/geflechtseismic-resolve.log"
+          resolve_log="$RUNNER_TEMP/geflechtfront-resolve.log"
           if ! xcodebuild \
             -project "$PROJECT_PATH" \
             -scheme "$SCHEME" \
@@ -168,8 +168,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          clean_log="$RUNNER_TEMP/geflechtseismic-clean.log"
-          derived_data="$RUNNER_TEMP/GeflechtSeismic-DerivedData"
+          clean_log="$RUNNER_TEMP/geflechtfront-clean.log"
+          derived_data="$RUNNER_TEMP/GeflechtFront-DerivedData"
           if ! xcodebuild \
             -project "$PROJECT_PATH" \
             -scheme "$SCHEME" \
@@ -194,9 +194,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          build_log="$RUNNER_TEMP/geflechtseismic-xcodebuild.log"
-          archive_path="$RUNNER_TEMP/GeflechtSeismic.xcarchive"
-          derived_data="$RUNNER_TEMP/GeflechtSeismic-DerivedData"
+          build_log="$RUNNER_TEMP/geflechtfront-xcodebuild.log"
+          archive_path="$RUNNER_TEMP/GeflechtFront.xcarchive"
+          derived_data="$RUNNER_TEMP/GeflechtFront-DerivedData"
 
           if [[ ! "$BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::Builder run number was not a positive integer."
@@ -247,8 +247,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          app_path="$RUNNER_TEMP/GeflechtSeismic.xcarchive/Products/Applications/$APP_NAME.app"
-          ipa_root="$RUNNER_TEMP/geflechtseismic-ipa"
+          app_path="$RUNNER_TEMP/GeflechtFront.xcarchive/Products/Applications/$APP_NAME.app"
+          ipa_root="$RUNNER_TEMP/geflechtfront-ipa"
           ipa_path="$RUNNER_TEMP/${APP_NAME}-unsigned.ipa"
 
           if [[ ! -d "$app_path" ]]; then
@@ -265,7 +265,7 @@ jobs:
             ditto -c -k --sequesterRsrc --keepParent Payload "$ipa_path"
           )
 
-          if ! unzip -Z1 "$ipa_path" >"$RUNNER_TEMP/geflechtseismic-ipa-entries.log" 2>&1; then
+          if ! unzip -Z1 "$ipa_path" >"$RUNNER_TEMP/geflechtfront-ipa-entries.log" 2>&1; then
             echo "::error::IPA packaging validation failed."
             exit 1
           fi
@@ -278,9 +278,9 @@ jobs:
           set -euo pipefail
 
           ipa_path="$RUNNER_TEMP/${APP_NAME}-unsigned.ipa"
-          audit_root="$RUNNER_TEMP/geflechtseismic-ipa-audit"
-          audit_log="$RUNNER_TEMP/geflechtseismic-ipa-audit.log"
-          entries_log="$RUNNER_TEMP/geflechtseismic-ipa-entries.log"
+          audit_root="$RUNNER_TEMP/geflechtfront-ipa-audit"
+          audit_log="$RUNNER_TEMP/geflechtfront-ipa-audit.log"
+          entries_log="$RUNNER_TEMP/geflechtfront-ipa-entries.log"
           app_path="$audit_root/Payload/$APP_NAME.app"
           app_binary="$app_path/$APP_NAME"
 
@@ -343,7 +343,7 @@ jobs:
             exit 1
           fi
 
-          if ! shasum -a 256 "$ipa_path" >"$RUNNER_TEMP/geflechtseismic-ipa.sha256" 2>&1; then
+          if ! shasum -a 256 "$ipa_path" >"$RUNNER_TEMP/geflechtfront-ipa.sha256" 2>&1; then
             echo "::error::IPA digest generation failed."
             exit 1
           fi
@@ -358,9 +358,9 @@ jobs:
           set -euo pipefail
 
           ipa_path="$RUNNER_TEMP/${APP_NAME}-unsigned.ipa"
-          digest_file="$RUNNER_TEMP/geflechtseismic-ipa.sha256"
-          release_log="$RUNNER_TEMP/geflechtseismic-release.log"
-          verify_dir="$RUNNER_TEMP/geflechtseismic-release-verify"
+          digest_file="$RUNNER_TEMP/geflechtfront-ipa.sha256"
+          release_log="$RUNNER_TEMP/geflechtfront-release.log"
+          verify_dir="$RUNNER_TEMP/geflechtfront-release-verify"
           source_sha="$(git -C "$GITHUB_WORKSPACE/private-source" rev-parse HEAD)"
           short_sha="${source_sha:0:12}"
           release_tag="private-build-${GITHUB_RUN_NUMBER}-${short_sha}"
@@ -407,11 +407,11 @@ jobs:
         shell: bash
         run: |
           rm -rf "$GITHUB_WORKSPACE/private-source"
-          rm -rf "$RUNNER_TEMP/GeflechtSeismic.xcarchive"
-          rm -rf "$RUNNER_TEMP/GeflechtSeismic-DerivedData"
-          rm -rf "$RUNNER_TEMP/geflechtseismic-ipa"
-          rm -rf "$RUNNER_TEMP/geflechtseismic-ipa-audit"
-          rm -rf "$RUNNER_TEMP/geflechtseismic-release-verify"
-          rm -f "$RUNNER_TEMP/GeflechtSeismic-unsigned.ipa"
-          rm -f "$RUNNER_TEMP"/geflechtseismic-*.log
-          rm -f "$RUNNER_TEMP"/geflechtseismic-ipa.sha256
+          rm -rf "$RUNNER_TEMP/GeflechtFront.xcarchive"
+          rm -rf "$RUNNER_TEMP/GeflechtFront-DerivedData"
+          rm -rf "$RUNNER_TEMP/geflechtfront-ipa"
+          rm -rf "$RUNNER_TEMP/geflechtfront-ipa-audit"
+          rm -rf "$RUNNER_TEMP/geflechtfront-release-verify"
+          rm -f "$RUNNER_TEMP/GeflechtFront-unsigned.ipa"
+          rm -f "$RUNNER_TEMP"/geflechtfront-*.log
+          rm -f "$RUNNER_TEMP"/geflechtfront-ipa.sha256
