@@ -242,25 +242,6 @@ jobs:
 
           echo "iOS archive succeeded."
 
-      - name: Apply adhoc placeholder signature privately
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          app_binary="$RUNNER_TEMP/GeflechtEQ.xcarchive/Products/Applications/$APP_NAME.app/$APP_NAME"
-          sign_log="$RUNNER_TEMP/geflechteq-adhoc-sign.log"
-
-          # Sideload tools reject binaries without a signature slot. Sign only
-          # the main executable ad-hoc (identity "-"): this embeds an
-          # LC_CODE_SIGNATURE slot containing no certificate, team identity, or
-          # credential material. The audit still forbids real signing material.
-          if ! codesign --force --sign - "$app_binary" >"$sign_log" 2>&1; then
-            echo "::error::Adhoc placeholder signing failed. Detailed output was withheld."
-            exit 1
-          fi
-
-          echo "Adhoc placeholder signature applied."
-
       - name: Package unsigned IPA privately
         shell: bash
         run: |
@@ -350,16 +331,8 @@ jobs:
             exit 1
           fi
 
-          if ! grep -q 'LC_CODE_SIGNATURE' "$audit_log"; then
-            echo "::error::IPA privacy audit expected an adhoc signature slot."
-            exit 1
-          fi
-
-          signature_info="$(codesign -dvvv "$app_binary" 2>&1 || true)"
-          if ! grep -q '^Signature=adhoc$' <<<"$signature_info" || \
-             ! grep -q '^TeamIdentifier=not set$' <<<"$signature_info" || \
-             grep -q '^Authority=' <<<"$signature_info"; then
-            echo "::error::IPA privacy audit found non-adhoc signing material."
+          if grep -q 'LC_CODE_SIGNATURE' "$audit_log"; then
+            echo "::error::IPA privacy audit found a code-signature load command."
             exit 1
           fi
 
