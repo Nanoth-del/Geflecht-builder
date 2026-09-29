@@ -11,7 +11,7 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 79154f5b7c75f2daae117180d8391b523ff2efa3
+        default: f6f4b486cc49e91d3ac46823a54159674b9c165d
         type: string
 
 # The workflow does not need an ambient repository GITHUB_TOKEN, so no
@@ -19,7 +19,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: geflechtfront-private-ipa-${{ inputs.source_ref || '79154f5b7c75f2daae117180d8391b523ff2efa3' }}
+  group: geflechtfront-private-ipa-${{ inputs.source_ref || 'f6f4b486cc49e91d3ac46823a54159674b9c165d' }}
   cancel-in-progress: false
 
 jobs:
@@ -30,15 +30,15 @@ jobs:
     env:
       SOURCE_REPOSITORY: Nanoth-del/GeflechtGennesis
       RELEASE_REPOSITORY: Nanoth-del/GeflechtGennesis
-      PROJECT_PATH: GeflechtFront.xcodeproj
-      SCHEME: GeflechtFront
-      APP_NAME: GeflechtFront
+      PROJECT_PATH: PatientMonitor.xcodeproj
+      SCHEME: PatientMonitor
+      APP_NAME: PatientMonitor
       BUILD_NUMBER: ${{ github.run_number }}
 
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '79154f5b7c75f2daae117180d8391b523ff2efa3' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'f6f4b486cc49e91d3ac46823a54159674b9c165d' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -52,7 +52,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '79154f5b7c75f2daae117180d8391b523ff2efa3' }}
+          SOURCE_REF: ${{ inputs.source_ref || 'f6f4b486cc49e91d3ac46823a54159674b9c165d' }}
           SOURCE_TOKEN: ${{ secrets.GENESIS }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
