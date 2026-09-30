@@ -262,7 +262,11 @@ jobs:
           ditto "$app_path" "$ipa_root/Payload/$APP_NAME.app"
           (
             cd "$ipa_root"
-            ditto -c -k --sequesterRsrc --keepParent Payload "$ipa_path"
+            # ditto -c -k emits a streaming zip whose local headers use data
+            # descriptors; some sideloading tools reject those as corrupt.
+            # Info-ZIP writes a classic archive with sizes/CRCs in the local
+            # headers, which every IPA tool parses.
+            zip -qry "$ipa_path" Payload
           )
 
           if ! unzip -Z1 "$ipa_path" >"$RUNNER_TEMP/geflechteq-ipa-entries.log" 2>&1; then
