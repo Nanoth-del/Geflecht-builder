@@ -11,7 +11,7 @@ on:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: f2269bf452a294bba620f44f42e45f9c6c783a0f
+        default: 66076443bd3075ad9a8b41d1c9acf8f071ff80f0
         type: string
 
 # The workflow does not need an ambient repository GITHUB_TOKEN, so no
@@ -19,7 +19,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: geflechtfront-private-ipa-${{ inputs.source_ref || 'f2269bf452a294bba620f44f42e45f9c6c783a0f' }}
+  group: geflechtfront-private-ipa-${{ inputs.source_ref || '66076443bd3075ad9a8b41d1c9acf8f071ff80f0' }}
   cancel-in-progress: false
 
 jobs:
@@ -38,7 +38,7 @@ jobs:
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || 'f2269bf452a294bba620f44f42e45f9c6c783a0f' }}
+          SOURCE_REF: ${{ inputs.source_ref || '66076443bd3075ad9a8b41d1c9acf8f071ff80f0' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -52,7 +52,7 @@ jobs:
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || 'f2269bf452a294bba620f44f42e45f9c6c783a0f' }}
+          SOURCE_REF: ${{ inputs.source_ref || '66076443bd3075ad9a8b41d1c9acf8f071ff80f0' }}
           SOURCE_TOKEN: ${{ secrets.GENESIS }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
