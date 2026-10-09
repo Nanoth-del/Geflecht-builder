@@ -260,9 +260,12 @@ jobs:
           rm -f "$ipa_path"
           mkdir -p "$ipa_root/Payload"
           ditto "$app_path" "$ipa_root/Payload/$APP_NAME.app"
+          # A plain Info-ZIP archive is broadly compatible with IPA signers.
+          # -X omits platform-specific ZIP extra fields; -y keeps framework symlinks.
+          # ZIP uses standard STORE/DEFLATE compression, not macOS resource-fork packaging.
           (
             cd "$ipa_root"
-            ditto -c -k --sequesterRsrc --keepParent Payload "$ipa_path"
+            /usr/bin/zip -q -r -X -y "$ipa_path" Payload
           )
 
           if ! unzip -Z1 "$ipa_path" >"$RUNNER_TEMP/geflechteq-ipa-entries.log" 2>&1; then
@@ -270,7 +273,13 @@ jobs:
             exit 1
           fi
 
-          echo "Unsigned IPA packaged successfully."
+          # Verify CRCs as well as directory structure before publishing the IPA.
+          if ! unzip -tq "$ipa_path" >"$RUNNER_TEMP/geflechteq-ipa-crc.log" 2>&1; then
+            echo "::error::IPA ZIP CRC validation failed."
+            exit 1
+          fi
+
+          echo "Unsigned IPA packaged and CRC-validated successfully."
 
       - name: Audit unsigned IPA privately
         shell: bash
