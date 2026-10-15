@@ -1,0 +1,93 @@
+name: Private unsigned iOS build
+on:
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: protected-ios-builder
+  cancel-in-progress: false
+jobs:
+  build:
+    name: Protected unsigned IPA
+    runs-on: macos-26
+    timeout-minutes: 70
+    steps:
+      - name: Obtain protected source
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.XAI }}
+          GIT_TERMINAL_PROMPT: "0"
+          GIT_CONFIG_NOSYSTEM: "1"
+          GIT_CONFIG_GLOBAL: /dev/null
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          [[ -n "$SOURCE_TOKEN" ]] || { echo "::error::Source credential missing."; exit 1; }
+          echo "::add-mask::$SOURCE_TOKEN"
+          repo_info="$(curl -fsS --retry 2 -H "Authorization: Bearer $SOURCE_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repositories/1420215309 2>"$RUNNER_TEMP/private-api.log")" || { echo "::error::Private repository lookup failed."; exit 1; }
+          [[ "$(jq -r '.private' <<<"$repo_info")" == true ]] || { echo "::error::Private repository required."; exit 1; }
+          repo="$(jq -er '.full_name' <<<"$repo_info")"
+          commit_info="$(curl -fsS --retry 2 -H "Authorization: Bearer $SOURCE_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$repo/branches/main" 2>>"$RUNNER_TEMP/private-api.log")" || { echo "::error::Private branch lookup failed."; exit 1; }
+          revision="$(jq -er '.commit.sha' <<<"$commit_info")"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Invalid private commit."; exit 1; }
+          echo "::add-mask::$revision"
+          root="$RUNNER_TEMP/private-src"
+          mkdir -p "$root"
+          if ! git -C "$root" init -q >"$RUNNER_TEMP/private-git.log" 2>&1; then echo "::error::Private init failed."; exit 1; fi
+          if ! git -C "$root" remote add origin "https://github.com/$repo.git" >>"$RUNNER_TEMP/private-git.log" 2>&1; then echo "::error::Private remote failed."; exit 1; fi
+          auth="$(printf 'x-access-token:%s' "$SOURCE_TOKEN" | base64 | tr -d '\n')"
+          if ! git -C "$root" -c "http.extraheader=AUTHORIZATION: basic $auth" fetch --depth=1 --no-tags origin main >>"$RUNNER_TEMP/private-git.log" 2>&1; then echo "::error::Private fetch failed."; exit 1; fi
+          unset SOURCE_TOKEN auth
+          if ! git -C "$root" checkout --detach --quiet FETCH_HEAD >>"$RUNNER_TEMP/private-git.log" 2>&1; then echo "::error::Private checkout failed."; exit 1; fi
+          [[ "$(git -C "$root" rev-parse HEAD)" == "$revision" ]] || { echo "::error::Private commit changed; retry."; exit 1; }
+          [[ -f "$root/.ci/build-unsigned.sh" ]] || { echo "::error::Private build contract missing."; exit 1; }
+          printf '%s' "$repo" > "$RUNNER_TEMP/private-repo"
+          printf '%s' "$revision" > "$RUNNER_TEMP/private-revision"
+          echo "Private source ready."
+      - name: Prepare Node toolchain
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+          check-latest: false
+      - name: Compile and privacy-audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          if ! bash "$RUNNER_TEMP/private-src/.ci/build-unsigned.sh" >"$RUNNER_TEMP/private-build.log" 2>&1; then echo "::error::Private build or audit failed; diagnostics withheld."; exit 1; fi
+          n="$(find "$RUNNER_TEMP/private-output" -maxdepth 1 -type f -name '*-unsigned.ipa' | wc -l | tr -d ' ')"
+          [[ "$n" == 1 ]] || { echo "::error::Private IPA output validation failed."; exit 1; }
+          echo "IPA compiled and audited privately."
+      - name: Publish to private Release
+        shell: bash
+        env:
+          RELEASE_TOKEN: ${{ secrets.XAI }}
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          [[ -n "$RELEASE_TOKEN" ]] || { echo "::error::Release credential missing."; exit 1; }
+          echo "::add-mask::$RELEASE_TOKEN"
+          repo="$(cat "$RUNNER_TEMP/private-repo")"
+          revision="$(cat "$RUNNER_TEMP/private-revision")"
+          echo "::add-mask::$revision"
+          ipa="$(find "$RUNNER_TEMP/private-output" -maxdepth 1 -type f -name '*-unsigned.ipa' -print -quit)"
+          [[ -s "$ipa" ]] || { echo "::error::Private IPA absent."; exit 1; }
+          name="$(basename "$ipa")"
+          short="$(printf '%s' "$revision" | cut -c1-12)"
+          tag="private-build-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT-$short"
+          if ! GH_TOKEN="$RELEASE_TOKEN" gh release create "$tag" "$ipa" --repo "$repo" --target "$revision" --title "Protected unsigned iOS IPA" --notes "Unsigned iOS build. Re-sign before installation." --prerelease >"$RUNNER_TEMP/private-release.log" 2>&1; then echo "::error::Private Release upload failed."; exit 1; fi
+          mkdir -p "$RUNNER_TEMP/private-verify"
+          if ! GH_TOKEN="$RELEASE_TOKEN" gh release download "$tag" --repo "$repo" --pattern "$name" --dir "$RUNNER_TEMP/private-verify" >>"$RUNNER_TEMP/private-release.log" 2>&1; then echo "::error::Private release verification download failed."; exit 1; fi
+          a="$(shasum -a 256 "$ipa" | awk '{print $1}')"
+          b="$(shasum -a 256 "$RUNNER_TEMP/private-verify/$name" | awk '{print $1}')"
+          [[ "$a" == "$b" ]] || { echo "::error::Private Release digest mismatch."; exit 1; }
+          echo "Private Release published and SHA-256 verified."
+      - name: Erase temporary private material
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$RUNNER_TEMP/private-src" "$RUNNER_TEMP/private-output" "$RUNNER_TEMP/private-app.xcarchive" "$RUNNER_TEMP/private-derived" "$RUNNER_TEMP/private-stage" "$RUNNER_TEMP/private-audit" "$RUNNER_TEMP/private-verify"
+          rm -f "$RUNNER_TEMP/private-repo" "$RUNNER_TEMP/private-revision" "$RUNNER_TEMP"/private-*.log
+          echo "Private temporary material removed."
