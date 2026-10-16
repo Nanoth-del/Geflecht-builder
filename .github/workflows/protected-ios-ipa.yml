@@ -1,5 +1,8 @@
 name: Private unsigned iOS build
 on:
+  push:
+    branches:
+      - geflechtxai-native-ipa-build-20261016
   workflow_dispatch:
 permissions: {}
 concurrency:
