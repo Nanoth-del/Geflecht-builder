@@ -49,3 +49,18 @@ The workflow performs all of the following privately:
    cleanup.
 5. Removes the private checkout, archive, derived data, IPA copies, audit
    directory, verification copy, and every captured log with `if: always()`.
+
+## WAR protected profile
+
+**WAR protected unsigned iOS build** is a separate manual-only controller in
+`protected-war-ios.yml`. It uses the existing `WAR` repository secret and one
+fixed private repository identity. It accepts no dispatch inputs and resolves
+private `main` to an immutable revision without exposing that revision in this
+public repository. The app's source version and build number remain unchanged.
+
+Build output and diagnostics stay in runner-local files. Successful builds
+upload the five contracted deliverables to a draft private prerelease, download
+and compare every asset and its checksum manifest, then publish and repeat the
+verification. Failure diagnostics may be retained only in a draft release in
+the same private repository. No public artifact or cache is created. Temporary
+source, build products, verification copies, and logs are erased on every run.

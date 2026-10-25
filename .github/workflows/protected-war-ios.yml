@@ -1,0 +1,179 @@
+name: WAR protected unsigned iOS build
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+concurrency:
+  group: protected-war-ios-builder
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Protected unsigned IPA
+    runs-on: macos-15
+    timeout-minutes: 70
+    steps:
+      - name: Obtain protected source
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.WAR }}
+          GIT_TERMINAL_PROMPT: "0"
+          GIT_CONFIG_NOSYSTEM: "1"
+          GIT_CONFIG_GLOBAL: /dev/null
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          [[ -n "$SOURCE_TOKEN" ]] || { echo "::error::Source credential missing."; exit 1; }
+          echo "::add-mask::$SOURCE_TOKEN"
+          exec 3>&1
+          obtain_source() {
+            repo_info="$(curl -fsS --retry 2 -H "Authorization: Bearer $SOURCE_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repositories/1431948260)"
+            [[ "$(jq -r '.private' <<<"$repo_info")" == true ]]
+            repo="$(jq -er '.full_name' <<<"$repo_info")"
+            [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+            echo "::add-mask::$repo" >&3
+            commit_info="$(curl -fsS --retry 2 -H "Authorization: Bearer $SOURCE_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$repo/branches/main")"
+            revision="$(jq -er '.commit.sha' <<<"$commit_info")"
+            [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+            echo "::add-mask::$revision" >&3
+            auth="$(printf 'x-access-token:%s' "$SOURCE_TOKEN" | base64 | tr -d '\n')"
+            echo "::add-mask::$auth" >&3
+            root="$RUNNER_TEMP/private-src"
+            mkdir -p "$root"
+            git -C "$root" init -q
+            git -C "$root" remote add origin "https://github.com/$repo.git"
+            git -C "$root" -c "http.extraheader=AUTHORIZATION: basic $auth" fetch --depth=1 --no-tags origin "$revision"
+            unset SOURCE_TOKEN auth
+            git -C "$root" checkout --detach --quiet FETCH_HEAD
+            [[ "$(git -C "$root" rev-parse HEAD)" == "$revision" ]]
+            [[ -f "$root/.ci/build-unsigned.sh" ]]
+            printf '%s' "$repo" > "$RUNNER_TEMP/private-repo"
+            printf '%s' "$revision" > "$RUNNER_TEMP/private-revision"
+          }
+          # Keep errexit active inside the function; test the subshell status afterward.
+          set +e
+          (set -e; obtain_source) >"$RUNNER_TEMP/private-checkout.log" 2>&1
+          result=$?
+          set -e
+          exec 3>&-
+          [[ "$result" == 0 ]] || { echo "::error::Private source preparation failed; diagnostics withheld."; exit 1; }
+          echo "Private source ready."
+      - name: Compile and privacy-audit
+        shell: bash
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/private-output
+          BUILDER_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          if ! bash "$RUNNER_TEMP/private-src/.ci/build-unsigned.sh" >"$RUNNER_TEMP/private-build.log" 2>&1; then
+            echo "::error::Private build or audit failed; diagnostics withheld."
+            exit 1
+          fi
+          echo "IPA compiled and audited privately."
+      - name: Publish verified private Release
+        shell: bash
+        env:
+          RELEASE_TOKEN: ${{ secrets.WAR }}
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          [[ -n "$RELEASE_TOKEN" ]] || { echo "::error::Release credential missing."; exit 1; }
+          echo "::add-mask::$RELEASE_TOKEN"
+          publish_release() {
+            export GH_TOKEN="$RELEASE_TOKEN"
+            repo="$(cat "$RUNNER_TEMP/private-repo")"
+            revision="$(cat "$RUNNER_TEMP/private-revision")"
+            [[ "$(gh api "repositories/1431948260" --jq '.private')" == true ]]
+            [[ "$(gh api "repositories/1431948260" --jq '.full_name')" == "$repo" ]]
+            output="$RUNNER_TEMP/private-output"
+            [[ -s "$output/SHA256SUMS.txt" && -s "$output/build-verification.json" && -s "$output/native-evidence.zip" ]]
+            # Fixed private output contract; reject unexpected files, directories, or symlinks.
+            ipa_count=0
+            received_count=0
+            assets=()
+            for asset in "$output"/*; do
+              [[ -f "$asset" && ! -L "$asset" ]]
+              case "$(basename "$asset")" in
+                *-unsigned.ipa) ipa_count=$((ipa_count + 1));;
+                *-received.zip) received_count=$((received_count + 1));;
+                native-evidence.zip|build-verification.json|SHA256SUMS.txt) ;;
+                *) return 1;;
+              esac
+              assets+=("$asset")
+            done
+            [[ "$ipa_count" == 1 && "$received_count" == 1 && "${#assets[@]}" == 5 ]]
+            (cd "$output"; shasum -a 256 -c SHA256SUMS.txt)
+            short="${revision:0:12}"
+            tag="private-war-build-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT-$short"
+            gh release create "$tag" "${assets[@]}" --repo "$repo" --target "$revision" --title "Protected unsigned iOS build" --notes "Unsigned build and private verification evidence. Re-sign privately before installation." --prerelease --draft
+            verify_release() {
+              destination="$1"
+              mkdir -p "$destination"
+              gh release download "$tag" --repo "$repo" --dir "$destination"
+              [[ "$(find "$destination" -type f | wc -l | tr -d ' ')" == 5 ]]
+              cmp "$output/SHA256SUMS.txt" "$destination/SHA256SUMS.txt"
+              for asset in "${assets[@]}"; do cmp "$asset" "$destination/$(basename "$asset")"; done
+              (cd "$destination"; shasum -a 256 -c SHA256SUMS.txt)
+            }
+            verify_release "$RUNNER_TEMP/private-verify/draft"
+            [[ "$(gh api "repositories/1431948260" --jq '.private')" == true ]]
+            gh release edit "$tag" --repo "$repo" --draft=false
+            verify_release "$RUNNER_TEMP/private-verify/published"
+          }
+          set +e
+          (set -e; publish_release) >"$RUNNER_TEMP/private-release.log" 2>&1
+          result=$?
+          set -e
+          [[ "$result" == 0 ]] || { echo "::error::Private Release verification failed; diagnostics withheld."; exit 1; }
+          echo "Private Release published and all assets verified."
+      - name: Preserve failure diagnostics privately
+        if: failure()
+        shell: bash
+        env:
+          RELEASE_TOKEN: ${{ secrets.WAR }}
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          [[ -n "$RELEASE_TOKEN" ]] || { echo "Private failure diagnostics unavailable."; exit 0; }
+          echo "::add-mask::$RELEASE_TOKEN"
+          preserve_failure() {
+            export GH_TOKEN="$RELEASE_TOKEN"
+            [[ -s "$RUNNER_TEMP/private-repo" && -s "$RUNNER_TEMP/private-revision" ]]
+            [[ "$(gh api "repositories/1431948260" --jq '.private')" == true ]]
+            repo="$(cat "$RUNNER_TEMP/private-repo")"
+            revision="$(cat "$RUNNER_TEMP/private-revision")"
+            [[ "$(gh api "repositories/1431948260" --jq '.full_name')" == "$repo" ]]
+            assets=()
+            for file in "$RUNNER_TEMP/private-output/build-failure.json" "$RUNNER_TEMP/private-output/private-diagnostics.zip" "$RUNNER_TEMP/private-build.log"; do
+              if [[ -s "$file" && -f "$file" && ! -L "$file" ]]; then assets+=("$file"); fi
+            done
+            [[ "${#assets[@]}" -gt 0 ]]
+            tag="private-war-failure-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT-${revision:0:12}"
+            gh release create "$tag" "${assets[@]}" --repo "$repo" --target "$revision" --title "Private build failure diagnostics" --notes "Private diagnostic evidence for an unsuccessful build." --prerelease --draft
+          }
+          set +e
+          (set -e; preserve_failure) >"$RUNNER_TEMP/private-failure-release.log" 2>&1
+          result=$?
+          set -e
+          if [[ "$result" == 0 ]]; then echo "Failure diagnostics preserved privately."; else echo "Private failure diagnostics unavailable; details withheld."; fi
+      - name: Erase temporary private material
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          if ! rm -rf "$RUNNER_TEMP/private-src" "$RUNNER_TEMP/private-output" "$RUNNER_TEMP/private-app.xcarchive" "$RUNNER_TEMP/private-derived" "$RUNNER_TEMP/private-stage" "$RUNNER_TEMP/private-audit" "$RUNNER_TEMP/private-verify" >/dev/null 2>&1; then
+            echo "::error::Private temporary cleanup failed; details withheld."
+            exit 1
+          fi
+          if ! rm -f "$RUNNER_TEMP/private-repo" "$RUNNER_TEMP/private-revision" "$RUNNER_TEMP"/private-*.log >/dev/null 2>&1; then
+            echo "::error::Private temporary cleanup failed; details withheld."
+            exit 1
+          fi
+          echo "Private temporary material removed."
