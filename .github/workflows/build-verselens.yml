@@ -1,0 +1,51 @@
+name: Build private VerseLens
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Immutable VerseLens source commit (40 lowercase hex characters)
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: verselens-private-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      SOURCE_REF: ${{ inputs.source_ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fetch exact private source
+        env:
+          PRIVATE_SOURCE_TOKEN: ${{ secrets.GEFLECHTEQ }}
+        run: python3 .github/scripts/verselens-build.py fetch
+      - name: Xcode and reproducibility checks
+        run: python3 .github/scripts/verselens-build.py prepare
+      - name: Core tests
+        run: python3 .github/scripts/verselens-build.py core
+      - name: Simulator app and test build
+        run: python3 .github/scripts/verselens-build.py compile
+      - name: Simulator unit and UI tests
+        run: python3 .github/scripts/verselens-build.py simulator
+      - name: Unsigned iPhone archive and IPA audit
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: python3 .github/scripts/verselens-build.py archive
+      - name: Upload artifacts and diagnostics to private Release
+        if: always()
+        env:
+          PRIVATE_SOURCE_TOKEN: ${{ secrets.GEFLECHTEQ }}
+          BUILD_OUTCOME: ${{ job.status }}
+        run: python3 .github/scripts/verselens-build.py publish
+      - name: Always remove private files
+        if: always()
+        run: python3 .github/scripts/verselens-build.py cleanup
