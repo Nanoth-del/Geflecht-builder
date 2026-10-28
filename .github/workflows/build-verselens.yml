@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - name: Fetch exact private source
         env:
-          PRIVATE_SOURCE_TOKEN: ${{ secrets.GEFLECHTEQ }}
+          PRIVATE_SOURCE_TOKEN: ${{ secrets.VERSELENS }}
         run: python3 .github/scripts/verselens-build.py fetch
       - name: Xcode and reproducibility checks
         run: python3 .github/scripts/verselens-build.py prepare
@@ -43,7 +43,7 @@ jobs:
       - name: Upload artifacts and diagnostics to private Release
         if: always()
         env:
-          PRIVATE_SOURCE_TOKEN: ${{ secrets.GEFLECHTEQ }}
+          PRIVATE_SOURCE_TOKEN: ${{ secrets.VERSELENS }}
           BUILD_OUTCOME: ${{ job.status }}
         run: python3 .github/scripts/verselens-build.py publish
       - name: Always remove private files
