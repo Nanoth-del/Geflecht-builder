@@ -104,9 +104,15 @@ def fetch():
 
 def prepare():
     validate_ref()
-    preferred = Path("/Applications/Xcode_16.4.app/Contents/Developer")
-    if preferred.is_dir():
-        command("select-xcode", ["sudo", "xcode-select", "-s", str(preferred)])
+    candidates = []
+    for app in Path('/Applications').glob('Xcode_26*.app'):
+        match = re.fullmatch(r'Xcode_([0-9]+(?:\.[0-9]+)*)\.app', app.name)
+        if match:
+            candidates.append((tuple(int(value) for value in match.group(1).split('.')), app))
+    if not candidates:
+        raise RuntimeError('A stable Xcode26 SDK is required for the native music interface')
+    preferred = max(candidates)[1] / 'Contents/Developer'
+    command("select-xcode", ["sudo", "xcode-select", "-s", str(preferred)])
     # Tool versions do not contain private-source information.
     print(subprocess.check_output(["xcodebuild", "-version"], text=True).strip())
     print(subprocess.check_output(["swift", "--version"], text=True).strip())
@@ -143,10 +149,10 @@ def export_results():
 
 def simulator():
     inventory = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
-    choices = [(runtime, device) for runtime, devices in inventory["devices"].items() if ".iOS-" in runtime for device in devices if device.get("isAvailable") and "iPhone" in device["name"]]
-    choices.sort(key=lambda pair: (0 if "SE (3rd generation)" in pair[1]["name"] else 1 if "16e" in pair[1]["name"] else 2, pair[0], pair[1]["name"]))
+    choices = [(runtime, device) for runtime, devices in inventory["devices"].items() if ".iOS-26-" in runtime for device in devices if device.get("isAvailable") and "iPhone" in device["name"]]
+    choices.sort(key=lambda pair: (0 if "16e" in pair[1]["name"] else 1 if "17e" in pair[1]["name"] else 2 if pair[1]["name"] == 'iPhone 17' else 3, pair[0], pair[1]["name"]))
     if not choices:
-        raise RuntimeError("No installed iPhone simulator")
+        raise RuntimeError("No installed iOS26 iPhone simulator")
     runtime, device = choices[0]
     (OUTPUT / "simulator.json").write_text(json.dumps(dict(runtime=runtime, device=device), indent=2))
     command("boot-simulator", ["xcrun", "simctl", "boot", device["udid"]], allow_failure=True)
