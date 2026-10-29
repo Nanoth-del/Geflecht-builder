@@ -146,11 +146,13 @@ def compile_app():
     app = ROOT / 'DerivedData/Build/Products/Debug-iphonesimulator/VerseLens.app'
     command('simulator-signature', ['codesign', '--verify', '--strict', str(app)])
     if (SOURCE / 'Config/Simulator.entitlements').is_file():
-        entitlements = plistlib.loads(subprocess.check_output(['codesign', '-d', '--entitlements', '-', str(app)], stderr=subprocess.DEVNULL))
+        # Simulator permissions are embedded in __TEXT by Xcode; the ordinary ad-hoc signature has a separate empty set.
+        simulated = ROOT / 'DerivedData/Build/Intermediates.noindex/VerseLens.build/Debug-iphonesimulator/VerseLens.build/VerseLens.app-Simulated.xcent'
+        entitlements = plistlib.loads(simulated.read_bytes())
         identifier = 'jp.nanoth.verselens'
         if entitlements.get('application-identifier') != identifier or identifier not in entitlements.get('keychain-access-groups', []):
             raise RuntimeError('Simulator Keychain identity is missing')
-        (OUTPUT / 'simulator-signing.json').write_text(json.dumps(dict(kind='ad-hoc Simulator only', applicationIdentifier=identifier, keychainAccess=True)))
+        (OUTPUT / 'simulator-signing.json').write_text(json.dumps(dict(kind='ad-hoc Simulator only', signatureVerified=True, entitlementSource='Xcode simulated entitlements; native Keychain round trip tested separately', applicationIdentifier=identifier, keychainAccess=True)))
     (OUTPUT / 'simulator-build.json').write_text(json.dumps(dict(source_ref=REF, result='success')))
     print('Simulator app and test bundles compiled successfully.', flush=True)
 
