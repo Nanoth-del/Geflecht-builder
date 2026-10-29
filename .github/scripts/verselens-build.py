@@ -116,7 +116,8 @@ def prepare():
     # Tool versions do not contain private-source information.
     print(subprocess.check_output(["xcodebuild", "-version"], text=True).strip())
     print(subprocess.check_output(["swift", "--version"], text=True).strip())
-    generated_paths = [SOURCE / "VerseLens/Resources/demo-lessons.json", SOURCE / "VerseLens.xcodeproj/project.pbxproj", SOURCE / "VerseLens.xcodeproj/xcshareddata/xcschemes/VerseLens.xcscheme"]
+    fixture = SOURCE / "VerseLensTests/Fixtures/demo-lessons.json"
+    generated_paths = [fixture if fixture.is_file() else SOURCE / "VerseLens/Resources/demo-lessons.json", SOURCE / "VerseLens.xcodeproj/project.pbxproj", SOURCE / "VerseLens.xcodeproj/xcshareddata/xcschemes/VerseLens.xcscheme"]
     before = [hashlib.sha256(path.read_bytes()).digest() for path in generated_paths]
     command("generate-demo", ["python3", "scripts/build_demo.py"])
     command("generate-project", ["python3", "scripts/generate_project.py"])
@@ -133,6 +134,8 @@ def core():
         command('catalog-live-probe', ['python3', 'scripts/probe_catalog.py', '--output', str(OUTPUT / 'catalog-live-probe.json')])
     if (SOURCE / 'scripts/probe_lrclib.py').is_file():
         command('lrclib-live-probe', ['python3', 'scripts/probe_lrclib.py', '--output', str(OUTPUT / 'lrclib-live-probe.json')])
+    if (SOURCE / 'scripts/probe_home.py').is_file():
+        command('home-live-probe', ['python3', 'scripts/probe_home.py', '--output', str(OUTPUT / 'home-live-probe.json')])
     print("Foundation core tests passed. Detailed results remain private.")
 
 
