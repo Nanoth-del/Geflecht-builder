@@ -131,6 +131,8 @@ def core():
     command("core-tests", ["swift", "test"])
     if (SOURCE / 'scripts/probe_catalog.py').is_file():
         command('catalog-live-probe', ['python3', 'scripts/probe_catalog.py', '--output', str(OUTPUT / 'catalog-live-probe.json')])
+    if (SOURCE / 'scripts/probe_lrclib.py').is_file():
+        command('lrclib-live-probe', ['python3', 'scripts/probe_lrclib.py', '--output', str(OUTPUT / 'lrclib-live-probe.json')])
     print("Foundation core tests passed. Detailed results remain private.")
 
 
