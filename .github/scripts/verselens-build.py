@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import os
+import plistlib
 import re
 import shutil
 import subprocess
@@ -141,7 +142,15 @@ def core():
 
 def compile_app():
     command('simulator-build', ['xcodebuild', 'build-for-testing', '-project', 'VerseLens.xcodeproj', '-scheme', 'VerseLens',
-        '-configuration', 'Debug', '-destination', 'generic/platform=iOS Simulator', '-derivedDataPath', str(ROOT / 'DerivedData'), 'CODE_SIGNING_ALLOWED=NO'])
+        '-configuration', 'Debug', '-destination', 'generic/platform=iOS Simulator', '-derivedDataPath', str(ROOT / 'DerivedData'), 'CODE_SIGNING_ALLOWED=YES', 'CODE_SIGN_IDENTITY=-'])
+    app = ROOT / 'DerivedData/Build/Products/Debug-iphonesimulator/VerseLens.app'
+    command('simulator-signature', ['codesign', '--verify', '--strict', str(app)])
+    if (SOURCE / 'Config/Simulator.entitlements').is_file():
+        entitlements = plistlib.loads(subprocess.check_output(['codesign', '-d', '--entitlements', '-', str(app)], stderr=subprocess.DEVNULL))
+        identifier = 'jp.nanoth.verselens'
+        if entitlements.get('application-identifier') != identifier or identifier not in entitlements.get('keychain-access-groups', []):
+            raise RuntimeError('Simulator Keychain identity is missing')
+        (OUTPUT / 'simulator-signing.json').write_text(json.dumps(dict(kind='ad-hoc Simulator only', applicationIdentifier=identifier, keychainAccess=True)))
     (OUTPUT / 'simulator-build.json').write_text(json.dumps(dict(source_ref=REF, result='success')))
     print('Simulator app and test bundles compiled successfully.', flush=True)
 
@@ -166,7 +175,7 @@ def simulator():
     command("boot-status", ["xcrun", "simctl", "bootstatus", device["udid"], "-b"])
     result = command("xcode-tests", ["xcodebuild", "test-without-building", "-project", "VerseLens.xcodeproj", "-scheme", "VerseLens", "-configuration", "Debug",
         "-destination", f"platform=iOS Simulator,id={device['udid']}", "-derivedDataPath", str(ROOT / "DerivedData"),
-        "-resultBundlePath", str(ROOT / "TestResults.xcresult"), "-parallel-testing-enabled", "NO", "CODE_SIGNING_ALLOWED=NO"], allow_failure=True)
+        "-resultBundlePath", str(ROOT / "TestResults.xcresult"), "-parallel-testing-enabled", "NO", "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-"], allow_failure=True)
     export_results()
     if result:
         raise RuntimeError("Simulator build or tests failed")
