@@ -213,14 +213,34 @@ jobs:
         run: |
           set -euo pipefail
           test_log="$RUNNER_TEMP/ogusupport-xctest.log"
+          test_result="$RUNNER_TEMP/ogusupport-tests.xcresult"
+          summary_script="$RUNNER_TEMP/ogusupport-xctest-summary.py"
+          curl --fail --silent --show-error --max-time 30 \
+            "https://raw.githubusercontent.com/Nanoth-del/Geflecht-builder/${GITHUB_SHA}/.github/scripts/ogu-xctest-summary.py" \
+            -o "$summary_script"
+          report_test_summary() {
+            xcrun xcresulttool get test-results summary --path "$test_result" \
+              >"$RUNNER_TEMP/ogusupport-test-summary.json" 2>/dev/null || true
+            xcrun xcresulttool get test-results tests --path "$test_result" \
+              >"$RUNNER_TEMP/ogusupport-test-tree.json" 2>/dev/null || true
+            xcrun xcresulttool get build-results --path "$test_result" \
+              >"$RUNNER_TEMP/ogusupport-test-build.json" 2>/dev/null || true
+            python3 "$summary_script" \
+              "$RUNNER_TEMP/ogusupport-test-summary.json" \
+              "$RUNNER_TEMP/ogusupport-test-tree.json" \
+              "$RUNNER_TEMP/ogusupport-test-build.json" \
+              "$test_log"
+          }
           if ! xcodebuild \
             -project "$PROJECT_PATH" \
             -scheme "$SCHEME" \
             -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=latest' \
+            -resultBundlePath "$test_result" \
             -skipMacroValidation \
             -skipPackagePluginValidation \
             CODE_SIGNING_ALLOWED=NO \
             test >"$test_log" 2>&1; then
+            report_test_summary
             sanitized_test_errors="$(
               grep -E 'error:|Testing failed:|Test Case .* failed|Unable to find a destination|fatal error:' "$test_log" |
                 sed -E 's#([^[:space:]]*/)?private-source/#<private-source>/#g' |
@@ -236,6 +256,7 @@ jobs:
             echo "::error::XCTest failed. Detailed output was withheld."
             exit 1
           fi
+          report_test_summary
           echo "XCTest succeeded."
       - name: Clean Xcode project privately
         if: ${{ inputs.run_tests == true }}
@@ -599,6 +620,7 @@ jobs:
             "$GITHUB_WORKSPACE/private-source" \
             "$RUNNER_TEMP/OsakaGakuinAI.xcarchive" \
             "$RUNNER_TEMP/OsakaGakuinAI-DerivedData" \
+            "$RUNNER_TEMP/ogusupport-tests.xcresult" \
             "$RUNNER_TEMP/ogusupport-ipa" \
             "$RUNNER_TEMP/ogusupport-ipa-audit" \
             "$RUNNER_TEMP/ogusupport-release-verify"
@@ -606,6 +628,8 @@ jobs:
           rm -f \
             "$RUNNER_TEMP"/ogusupport-*.log \
             "$RUNNER_TEMP"/ogusupport-*.sha256 \
+            "$RUNNER_TEMP"/ogusupport-test-*.json \
+            "$RUNNER_TEMP/ogusupport-xctest-summary.py" \
             "$RUNNER_TEMP/OsakaGakuinAI-unsigned.ipa"
 
           echo "Private working data removed."
