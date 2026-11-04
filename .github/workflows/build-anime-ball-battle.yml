@@ -1,0 +1,203 @@
+name: Anime Ball Battle private build and Release
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/build-anime-ball-battle.yml']
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Immutable lowercase 40-character private source SHA
+        required: true
+        default: 8900a1156a6f4408699717dfe661ed1903557690
+        type: string
+      capture_mode:
+        description: One native launch scenario
+        type: choice
+        options: [normal, sukuna]
+        default: normal
+
+permissions: {}
+concurrency:
+  group: anime-ball-private-${{ inputs.source_ref || '8900a1156a6f4408699717dfe661ed1903557690' }}-${{ inputs.capture_mode || 'normal' }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: private native build and verified Release
+    runs-on: macos-26
+    timeout-minutes: 40
+    env:
+      SOURCE_REPOSITORY: Nanoth-del/anime-ball-battle
+      RELEASE_REPOSITORY: Nanoth-del/anime-ball-battle
+      SOURCE_REF: ${{ inputs.source_ref || '8900a1156a6f4408699717dfe661ed1903557690' }}
+      CAPTURE_MODE: ${{ inputs.capture_mode || 'normal' }}
+
+    steps:
+      - name: Validate fixed immutable request
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]] || { echo '::error::Immutable source SHA required.'; exit 1; }
+          case "$CAPTURE_MODE" in normal|sukuna) ;; *) echo '::error::Unsupported capture scenario.'; exit 1;; esac
+          echo 'Fixed private build request accepted.'
+
+      - name: Checkout private source with existing EQ credential
+        shell: bash
+        env:
+          SOURCE_TOKEN: ${{ secrets.GEFLECHTEQ }}
+          GIT_CONFIG_NOSYSTEM: '1'
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          [[ -n "$SOURCE_TOKEN" ]] || { echo '::error::Existing Builder credential missing.'; exit 1; }
+          echo "::add-mask::$SOURCE_TOKEN"
+          auth="$(printf 'x-access-token:%s' "$SOURCE_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::$auth"
+          source_path="$GITHUB_WORKSPACE/private-source"
+          log="$RUNNER_TEMP/anime-ball-checkout.log"
+          mkdir -p "$source_path" >"$log" 2>&1 || { echo '::error::Private checkout preparation failed.'; exit 1; }
+          checkout_source() {
+            git -C "$source_path" init -q || return 1
+            git -C "$source_path" remote add origin "https://github.com/$SOURCE_REPOSITORY.git" || return 1
+            git -C "$source_path" -c "http.extraheader=AUTHORIZATION: basic $auth" fetch --no-tags --depth=1 origin "$SOURCE_REF" || return 1
+            git -C "$source_path" checkout --detach --quiet FETCH_HEAD || return 1
+            [[ "$(git -C "$source_path" rev-parse HEAD)" == "$SOURCE_REF" ]]
+          }
+          if ! (set -e; checkout_source) >"$log" 2>&1; then
+            echo '::error::Fixed private source checkout failed; diagnostics withheld.'
+            exit 1
+          fi
+          unset SOURCE_TOKEN auth
+          pattern='AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH |DSA |PRIVATE )?PRIVATE KEY-----|xox[baprs]-[A-Za-z0-9-]+|gh[pousr]_[A-Za-z0-9_]{20,}|sk-(proj|svcacct)-[A-Za-z0-9_-]{20,}'
+          if git -C "$source_path" grep -I -E -q "$pattern" -- .; then
+            echo '::error::Private source audit failed; matched content withheld.'; exit 1
+          fi
+          [[ -f "$source_path/AnimeBallBattle.xcodeproj/project.pbxproj" && -f "$source_path/scripts/build-ios.sh" ]] || {
+            echo '::error::Fixed private project contract missing.'; exit 1;
+          }
+          echo 'Private immutable source checked out.'
+
+      - name: Build and verify native runtime privately
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          build_number=$((2600 + GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))
+          run_url="$GITHUB_SERVER_URL/Nanoth-del/Geflecht-builder/actions/runs/$GITHUB_RUN_ID"
+          cd "$GITHUB_WORKSPACE/private-source" 2>"$RUNNER_TEMP/anime-ball-build.log" || {
+            echo '::error::Private build directory unavailable.'; exit 1;
+          }
+          if ! GITHUB_SHA="$SOURCE_REF" GITHUB_REPOSITORY="$SOURCE_REPOSITORY" \
+            BUILD_NUMBER_OVERRIDE="$build_number" BUILD_RUN_URL="$run_url" \
+            bash scripts/build-ios.sh >"$RUNNER_TEMP/anime-ball-build.log" 2>&1; then
+            echo '::error::Private native build/runtime verification failed; diagnostics withheld.'
+            exit 1
+          fi
+          echo 'Native builds, one launch capture and runtime gates passed privately.'
+
+      - name: Preserve native evidence in the private bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_path="$GITHUB_WORKSPACE/private-source"
+          evidence="$RUNNER_TEMP/anime-ball-native-evidence.zip"
+          if ! python3 - "$source_path" "$evidence" >"$RUNNER_TEMP/anime-ball-evidence.log" 2>&1 <<'PY'
+          from pathlib import Path
+          import sys, zipfile
+          root, target = map(Path, sys.argv[1:])
+          with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
+              for path in sorted((root/'build').glob('*.log')):
+                  archive.write(path, path.name)
+          PY
+          then
+            echo '::error::Private evidence packaging failed; diagnostics withheld.'; exit 1
+          fi
+          cp "$evidence" "$source_path/build/artifacts/native-evidence.zip" >>"$RUNNER_TEMP/anime-ball-evidence.log" 2>&1 || {
+            echo '::error::Private evidence transfer failed; diagnostics withheld.'; exit 1;
+          }
+          info="$source_path/build/device/Build/Products/Release-iphoneos/AnimeBallBattle.app/Info.plist"
+          run_url="$GITHUB_SERVER_URL/Nanoth-del/Geflecht-builder/actions/runs/$GITHUB_RUN_ID"
+          if ! GITHUB_SHA="$SOURCE_REF" GITHUB_REPOSITORY="$SOURCE_REPOSITORY" BUILD_RUN_URL="$run_url" \
+            python3 "$source_path/scripts/prepare-release.py" "$info" >"$RUNNER_TEMP/anime-ball-metadata.log" 2>&1; then
+            echo '::error::Private evidence metadata preparation failed.'; exit 1
+          fi
+          echo 'Private evidence and checksum bundle prepared.'
+
+      - name: Publish and download-verify private Release
+        shell: bash
+        env:
+          RELEASE_TOKEN: ${{ secrets.GEFLECHTEQ }}
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          [[ -n "$RELEASE_TOKEN" ]] || { echo '::error::Existing Release credential missing.'; exit 1; }
+          echo "::add-mask::$RELEASE_TOKEN"
+          source_path="$GITHUB_WORKSPACE/private-source"
+          publish_private() {
+            GITHUB_SHA="$SOURCE_REF" GITHUB_REPOSITORY="$RELEASE_REPOSITORY" GITHUB_REF=refs/heads/main \
+              GH_TOKEN="$RELEASE_TOKEN" GITHUB_STEP_SUMMARY='' \
+              python3 "$source_path/scripts/publish-build.py" "$source_path/build/artifacts" || return 1
+            tag="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tag"])' "$source_path/build/artifacts/BUILD-METADATA.json")" || return 1
+            mkdir -p "$RUNNER_TEMP/anime-ball-verify" || return 1
+            GH_TOKEN="$RELEASE_TOKEN" gh release download "$tag" --repo "$RELEASE_REPOSITORY" \
+              --pattern 'AnimeBallBattle-unsigned.ipa' --dir "$RUNNER_TEMP/anime-ball-verify" || return 1
+            cmp "$source_path/build/artifacts/AnimeBallBattle-unsigned.ipa" "$RUNNER_TEMP/anime-ball-verify/AnimeBallBattle-unsigned.ipa"
+          }
+          if ! (set -e; publish_private) >"$RUNNER_TEMP/anime-ball-release.log" 2>&1; then
+            echo '::error::Private Release publication/verification failed; diagnostics withheld.'; exit 1
+          fi
+          echo 'Private Release published and downloaded IPA verified.'
+
+      - name: Retain failure diagnostics only in private draft
+        if: failure()
+        shell: bash
+        env:
+          RELEASE_TOKEN: ${{ secrets.GEFLECHTEQ }}
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          [[ -n "$RELEASE_TOKEN" ]] || { echo 'Private diagnostics unavailable.'; exit 0; }
+          echo "::add-mask::$RELEASE_TOKEN"
+          retain_private() {
+            [[ "$(GH_TOKEN="$RELEASE_TOKEN" gh api "repos/$RELEASE_REPOSITORY" --jq '.private')" == true ]] || return 1
+            python3 - "$GITHUB_WORKSPACE/private-source" "$RUNNER_TEMP" <<'PY' || return 1
+          from pathlib import Path
+          import sys,zipfile
+          source,temp=map(Path,sys.argv[1:])
+          with zipfile.ZipFile(temp/'anime-ball-diagnostics.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for p in sorted(temp.glob('anime-ball-*.log')):
+                  if 'failure-retention' not in p.name: z.write(p,p.name)
+              for p in sorted((source/'build').glob('*.log')):
+                  z.write(p,'build/'+p.name)
+          PY
+            tag="builder-failure-$GITHUB_RUN_NUMBER-$GITHUB_RUN_ATTEMPT-${SOURCE_REF:0:12}"
+            GH_TOKEN="$RELEASE_TOKEN" gh release create "$tag" "$RUNNER_TEMP/anime-ball-diagnostics.zip" \
+              --repo "$RELEASE_REPOSITORY" --target "$SOURCE_REF" --draft --prerelease \
+              --title 'Private Builder diagnostics' --notes 'Private diagnostics for an unsuccessful native build.'
+          }
+          if (set -e; retain_private) >"$RUNNER_TEMP/anime-ball-failure-retention.log" 2>&1; then
+            echo 'Failure diagnostics retained in private draft.'
+          else
+            echo 'Private diagnostics unavailable; details withheld.'
+          fi
+
+      - name: Erase temporary private source and logs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          rm -rf -- "$GITHUB_WORKSPACE/private-source" "$RUNNER_TEMP/anime-ball-verify" >/dev/null 2>&1 || {
+            echo '::error::Private source cleanup failed; details withheld.'; exit 1;
+          }
+          rm -f -- "$RUNNER_TEMP"/anime-ball-*.log "$RUNNER_TEMP/anime-ball-native-evidence.zip" "$RUNNER_TEMP/anime-ball-diagnostics.zip" >/dev/null 2>&1 || {
+            echo '::error::Private log cleanup failed; details withheld.'; exit 1;
+          }
+          echo 'Temporary private material removed.'
