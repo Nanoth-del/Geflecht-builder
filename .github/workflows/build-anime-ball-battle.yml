@@ -42,10 +42,10 @@ jobs:
           case "$CAPTURE_MODE" in normal|sukuna) ;; *) echo '::error::Unsupported capture scenario.'; exit 1;; esac
           echo 'Fixed private build request accepted.'
 
-      - name: Checkout private source with existing EQ credential
+      - name: Checkout private source with dedicated app credential
         shell: bash
         env:
-          SOURCE_TOKEN: ${{ secrets.GEFLECHTEQ }}
+          SOURCE_TOKEN: ${{ secrets.ANIME_BALL_BATTLE }}
           GIT_CONFIG_NOSYSTEM: '1'
           GIT_CONFIG_GLOBAL: /dev/null
           GIT_TERMINAL_PROMPT: '0'
@@ -131,7 +131,7 @@ jobs:
       - name: Publish and download-verify private Release
         shell: bash
         env:
-          RELEASE_TOKEN: ${{ secrets.GEFLECHTEQ }}
+          RELEASE_TOKEN: ${{ secrets.ANIME_BALL_BATTLE }}
         run: |
           set -euo pipefail
           set +x
@@ -158,7 +158,7 @@ jobs:
         if: failure()
         shell: bash
         env:
-          RELEASE_TOKEN: ${{ secrets.GEFLECHTEQ }}
+          RELEASE_TOKEN: ${{ secrets.ANIME_BALL_BATTLE }}
         run: |
           set -euo pipefail
           set +x
