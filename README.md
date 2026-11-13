@@ -33,8 +33,13 @@ are available for migration.
 ## Dispatch contract
 
 Run **GeflechtEQ private unsigned IPA build** with the exact, lowercase,
-40-character source commit SHA. The workflow rejects branches, tags, short
-SHAs, and arbitrary source / Release destinations.
+40-character source commit SHA and a `build_variant`. The workflow rejects
+branches, tags, short SHAs, and arbitrary source or Release destinations.
+
+- `comparison` uses the existing `GeflechtEQ` scheme.
+- `independent` uses `GeflechtEQ-Independent` and checks the IPA for the
+  expected independent runtime and the absence of comparison components.
+  Its private release tag starts with `private-independent-`.
 
 The workflow performs all of the following privately:
 

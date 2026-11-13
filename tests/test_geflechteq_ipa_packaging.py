@@ -28,6 +28,13 @@ class GeflechtEQIPAPackagingTests(unittest.TestCase):
         self.assertIn('--prerelease', text)
         self.assertIn('rm -f "$RUNNER_TEMP"/geflechteq-*.log', text)
 
+    def test_variant_uses_a_fixed_target_and_independent_audit(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("type: choice", text)
+        self.assertIn("'SCHEME=GeflechtEQ' 'APP_NAME=GeflechtEQ'", text)
+        self.assertIn("'SCHEME=GeflechtEQ-Independent' 'APP_NAME=GeflechtEQIndependent'", text)
+        self.assertLess(text.index("scripts/verify_independent_ipa.py"), text.index("gh release create"))
+
 
 if __name__ == "__main__":
     unittest.main()

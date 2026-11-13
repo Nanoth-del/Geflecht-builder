@@ -1,25 +1,27 @@
 name: GeflechtEQ private unsigned IPA build
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/workflows/build-ios-unsigned.yml'
   workflow_dispatch:
     inputs:
       source_ref:
         description: Immutable lowercase 40-character source commit SHA
         required: true
-        default: 2f6955bae20ef20d95cf1b4514bf95477b1cecb2
         type: string
+      build_variant:
+        description: Select comparison or independent detection + v7.13
+        required: true
+        default: comparison
+        type: choice
+        options:
+          - comparison
+          - independent
 
 # The workflow does not need an ambient repository GITHUB_TOKEN, so no
 # repository permission is granted.
 permissions: {}
 
 concurrency:
-  group: geflechteq-private-ipa-${{ inputs.source_ref || '2f6955bae20ef20d95cf1b4514bf95477b1cecb2' }}
+  group: geflechteq-private-ipa-${{ inputs.source_ref }}-${{ inputs.build_variant }}
   cancel-in-progress: false
 
 jobs:
@@ -31,14 +33,13 @@ jobs:
       SOURCE_REPOSITORY: Nanoth-del/GeflechtEQ
       RELEASE_REPOSITORY: Nanoth-del/GeflechtEQ
       PROJECT_PATH: GeflechtEQ.xcodeproj
-      SCHEME: GeflechtEQ
-      APP_NAME: GeflechtEQ
+      BUILD_VARIANT: ${{ inputs.build_variant }}
       BUILD_NUMBER: ${{ github.run_number }}
 
     steps:
       - name: Validate immutable build request
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '2f6955bae20ef20d95cf1b4514bf95477b1cecb2' }}
+          SOURCE_REF: ${{ inputs.source_ref }}
         shell: bash
         run: |
           set -euo pipefail
@@ -48,11 +49,24 @@ jobs:
             exit 1
           fi
 
+          case "$BUILD_VARIANT" in
+            comparison)
+              printf '%s\n' 'SCHEME=GeflechtEQ' 'APP_NAME=GeflechtEQ' >> "$GITHUB_ENV"
+              ;;
+            independent)
+              printf '%s\n' 'SCHEME=GeflechtEQ-Independent' 'APP_NAME=GeflechtEQIndependent' >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "::error::Unknown build variant."
+              exit 1
+              ;;
+          esac
+
           echo "Immutable build request accepted."
 
       - name: Checkout private source without publishing metadata
         env:
-          SOURCE_REF: ${{ inputs.source_ref || '2f6955bae20ef20d95cf1b4514bf95477b1cecb2' }}
+          SOURCE_REF: ${{ inputs.source_ref }}
           SOURCE_TOKEN: ${{ secrets.GEFLECHTEQ }}
           GIT_CONFIG_NOSYSTEM: "1"
           GIT_CONFIG_GLOBAL: /dev/null
@@ -334,6 +348,13 @@ jobs:
             exit 1
           fi
 
+          if [[ "$BUILD_VARIANT" == "independent" ]]; then
+            if ! python3 "$GITHUB_WORKSPACE/private-source/scripts/verify_independent_ipa.py" "$app_path" >>"$audit_log" 2>&1; then
+              echo "::error::The independent app failed the code and resource audit."
+              exit 1
+            fi
+          fi
+
           if LC_ALL=C grep -R -a -E -q \
             'AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH |DSA |PRIVATE )?PRIVATE KEY-----|xox[baprs]-[A-Za-z0-9-]+|gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|Bearer[[:space:]]+[A-Za-z0-9._~+/=-]{20,}|/Users/|/home/runner/|private-source|Geflecht-builder|Nanoth-del/' \
             "$audit_root"; then
@@ -362,6 +383,9 @@ jobs:
           source_sha="$(git -C "$GITHUB_WORKSPACE/private-source" rev-parse HEAD)"
           short_sha="${source_sha:0:12}"
           release_tag="private-build-${GITHUB_RUN_NUMBER}-${short_sha}"
+          if [[ "$BUILD_VARIANT" == "independent" ]]; then
+            release_tag="private-independent-${GITHUB_RUN_NUMBER}-${short_sha}"
+          fi
 
           if [[ -z "$RELEASE_TOKEN" ]]; then
             echo "::error::The protected Release-write credential is not configured."
@@ -411,5 +435,6 @@ jobs:
           rm -rf "$RUNNER_TEMP/geflechteq-ipa-audit"
           rm -rf "$RUNNER_TEMP/geflechteq-release-verify"
           rm -f "$RUNNER_TEMP/GeflechtEQ-unsigned.ipa"
+          rm -f "$RUNNER_TEMP/GeflechtEQIndependent-unsigned.ipa"
           rm -f "$RUNNER_TEMP"/geflechteq-*.log
           rm -f "$RUNNER_TEMP"/geflechteq-ipa.sha256
