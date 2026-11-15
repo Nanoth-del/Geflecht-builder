@@ -470,7 +470,7 @@ jobs:
             exit 1
           fi
           mkdir -p "$report_root"
-          for part in native xcodebuild audit; do
+          for part in native xcodebuild ipa-audit; do
             candidate="$RUNNER_TEMP/geflechteq-$part.log"
             if [[ -f "$candidate" ]]; then tail -n 3000 "$candidate" >"$report_root/$part.log"; fi
           done
