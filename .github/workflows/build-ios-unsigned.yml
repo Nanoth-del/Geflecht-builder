@@ -114,6 +114,15 @@ jobs:
             exit 1
           fi
 
+          if [[ "$BUILD_VARIANT" == "independent" ]]; then
+            baseline_ref="$(python3 "$source_path/scripts/verify_independent_native.py" --baseline-ref)"
+            if [[ ! "$baseline_ref" =~ ^[0-9a-f]{40}$ ]]; then exit 1; fi
+            if ! git -C "$source_path" -c "http.extraheader=AUTHORIZATION: basic $auth_header" \
+              fetch --no-tags --depth=1 origin "$baseline_ref" >>"$checkout_log" 2>&1; then
+              echo "::error::Native regression reference checkout failed."
+              exit 1
+            fi
+          fi
           unset SOURCE_TOKEN auth_header
           echo "Private source checkout succeeded."
 
@@ -156,6 +165,20 @@ jobs:
           fi
 
           echo "Toolchain validation succeeded."
+
+      - name: Verify native independent behavior privately
+        id: native_checks
+        if: inputs.build_variant == 'independent'
+        continue-on-error: true
+        working-directory: private-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! python3 scripts/verify_independent_native.py >"$RUNNER_TEMP/geflechteq-native.log" 2>&1; then
+            echo "::error::Native checks failed; private diagnostics will be retained in the private source repository."
+            exit 1
+          fi
+          echo "Native regression, policy, presentation and recorded-replay checks passed."
 
       - name: Resolve Swift packages privately
         working-directory: private-source
@@ -369,6 +392,13 @@ jobs:
 
           echo "Unsigned IPA privacy audit succeeded: version $bundle_version ($bundle_build)."
 
+      - name: Require successful independent native checks
+        if: inputs.build_variant == 'independent' && steps.native_checks.outcome != 'success'
+        shell: bash
+        run: |
+          echo "::error::The independent artifact cannot be published until native checks pass."
+          exit 1
+
       - name: Publish and verify private Release asset
         env:
           RELEASE_TOKEN: ${{ secrets.GEFLECHTEQ }}
@@ -424,6 +454,41 @@ jobs:
           unset RELEASE_TOKEN
           echo "Private Release asset published and verified."
 
+      - name: Retain verification evidence privately
+        if: always() && inputs.build_variant == 'independent'
+        env:
+          RELEASE_TOKEN: ${{ secrets.GEFLECHTEQ }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::add-mask::$RELEASE_TOKEN"
+          report_log="$RUNNER_TEMP/geflechteq-private-report.log"
+          report_root="$RUNNER_TEMP/geflechteq-native-report"
+          report_zip="$RUNNER_TEMP/geflechteq-native-report.zip"
+          if [[ "$(GH_TOKEN="$RELEASE_TOKEN" gh api "repos/$RELEASE_REPOSITORY" --jq .private)" != "true" ]]; then
+            echo "::error::Diagnostics require a private repository."
+            exit 1
+          fi
+          mkdir -p "$report_root"
+          for part in native xcodebuild audit; do
+            candidate="$RUNNER_TEMP/geflechteq-$part.log"
+            if [[ -f "$candidate" ]]; then tail -n 3000 "$candidate" >"$report_root/$part.log"; fi
+          done
+          for candidate in "$GITHUB_WORKSPACE/private-source/build/independent-ios-finish"/native*.json; do
+            if [[ -f "$candidate" ]]; then cp "$candidate" "$report_root/"; fi
+          done
+          source_sha="$(git -C "$GITHUB_WORKSPACE/private-source" rev-parse HEAD)"
+          tag="private-verification-${GITHUB_RUN_ID}"
+          (cd "$report_root" && zip -q -r "$report_zip" .)
+          if GH_TOKEN="$RELEASE_TOKEN" gh release view "$tag" --repo "$RELEASE_REPOSITORY" >"$report_log" 2>&1; then
+            GH_TOKEN="$RELEASE_TOKEN" gh release upload "$tag" "$report_zip" --clobber --repo "$RELEASE_REPOSITORY" >>"$report_log" 2>&1
+          else
+            GH_TOKEN="$RELEASE_TOKEN" gh release create "$tag" "$report_zip" --repo "$RELEASE_REPOSITORY" \
+              --target "$source_sha" --title "Private independent verification ${GITHUB_RUN_NUMBER}" \
+              --notes "Private compiler diagnostics and native verification evidence." --prerelease >"$report_log" 2>&1
+          fi
+          echo "Verification evidence retained only in the private repository."
+
       - name: Remove private source and all build products
         if: always()
         shell: bash
@@ -438,3 +503,5 @@ jobs:
           rm -f "$RUNNER_TEMP/GeflechtEQIndependent-unsigned.ipa"
           rm -f "$RUNNER_TEMP"/geflechteq-*.log
           rm -f "$RUNNER_TEMP"/geflechteq-ipa.sha256
+          rm -rf "$RUNNER_TEMP/geflechteq-native-report"
+          rm -f "$RUNNER_TEMP/geflechteq-native-report.zip"
