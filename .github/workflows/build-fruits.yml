@@ -1,5 +1,5 @@
-name: Fruits private build
-run-name: Fruits private build
+name: Fruits private validation
+run-name: Fruits private validation
 
 on:
   workflow_dispatch:
@@ -12,42 +12,49 @@ on:
 permissions: {}
 
 concurrency:
-  group: fruits-private-build
+  group: fruits-private-validation
   cancel-in-progress: false
 
 jobs:
   build:
-    name: Build and save privately
+    name: Validate and save diagnostics privately
     runs-on: macos-26
     timeout-minutes: 60
     defaults:
       run:
         shell: bash
     steps:
-      - name: Check build request and Xcode
+      - name: Check validation request and Xcode
         run: |
           set -euo pipefail
           umask 077
-          work="$RUNNER_TEMP/fruits-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          [[ -n "$RUNNER_TEMP" && "$GITHUB_RUN_ID" =~ ^[0-9]+$ && "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]
+          work="$RUNNER_TEMP/fruits-validation-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           mkdir -m 700 "$work"
+          date -u +%FT%TZ >"$work/started-at"
+          : >"$work/checks.tsv"
           if ! source_ref="$(jq -er '.inputs.source_ref' "$GITHUB_EVENT_PATH" 2>"$work/request.log")" ||
-            [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::A full lowercase source commit SHA is required."
-            exit 1
-          fi
-          # Pin the reviewed commit without echoing the private source ref in the run log.
-          if [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 2f9e92e68b11f0720a9ad339b45657c0a80f889958748d2e45aebb5cedcf159b ]]; then
-            echo "::error::The requested commit is outside the reviewed build scope."
+            [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != ee0820f147f518f2888e026308ccee577f12dc76d2588ab0e65bcf90acbe891e ]]; then
+            printf 'request\t1\t-\t-\tvalidate reviewed source input\n' >>"$work/checks.tsv"
+            echo "::error::The requested source is outside the reviewed validation scope."
             exit 1
           fi
           printf '%s\n' "$source_ref" >"$work/source-ref"
-          if [[ "$(uname -m)" != arm64 ]] ||
-            ! xcodebuild -version >"$work/toolchain.log" 2>&1 ||
-            ! xcrun --sdk iphoneos --show-sdk-path >>"$work/toolchain.log" 2>&1; then
+          printf 'request\t0\t-\t-\tvalidate reviewed source input\n' >>"$work/checks.tsv"
+          if ! {
+            [[ "$(uname -m)" == arm64 ]] &&
+              xcodebuild -version &&
+              xcrun --sdk iphoneos --show-sdk-path &&
+              xcrun --sdk macosx --show-sdk-path &&
+              python3 --version && git --version && gh --version
+          } >"$work/toolchain.log" 2>&1; then
+            printf 'toolchain\t1\t-\t-\tverify macOS arm64 and Xcode tools\n' >>"$work/checks.tsv"
             echo "::error::The required macOS and Xcode toolchain is unavailable."
             exit 1
           fi
-          echo "Build request and Xcode verified."
+          printf 'toolchain\t0\t-\t-\tverify macOS arm64 and Xcode tools\n' >>"$work/checks.tsv"
+          echo "Validation request and toolchain verified."
 
       - name: Fetch the private Fruits source
         env:
@@ -60,18 +67,18 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          work="$RUNNER_TEMP/fruits-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          work="$RUNNER_TEMP/fruits-validation-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           source_ref="$(cat "$work/source-ref")"
           log="$work/checkout.log"
-          if [[ -z "$GH_TOKEN" ]]; then
-            echo "::error::The LINE repository credential is missing."
-            exit 1
-          fi
-          if ! {
+          export GH_CONFIG_DIR="$work/checkout-gh-config"
+          unset GH_DEBUG GIT_TRACE GIT_TRACE_CURL GIT_CURL_VERBOSE
+          checkout_status=1
+          trap 'printf "checkout\t%s\t-\t-\tprivate exact-commit checkout\n" "$checkout_status" >>"$work/checks.tsv"; unset GH_TOKEN GITHUB_TOKEN LINE' EXIT
+          if [[ -z "$GH_TOKEN" ]] || ! {
             [[ "$(gh api --hostname github.com repos/Nanoth-del/Fruits \
               --jq '.full_name == "Nanoth-del/Fruits" and .private and .visibility == "private"')" == true ]]
           } >"$log" 2>&1; then
-            echo "::error::Could not verify private access to Fruits using LINE."
+            echo "::error::Could not verify private source access."
             exit 1
           fi
           if ! {
@@ -82,89 +89,174 @@ jobs:
                 -c 'credential.https://github.com.helper=!gh auth git-credential' \
                 fetch --no-tags --depth=1 origin "$source_ref" &&
               git -C "$work/source" checkout --detach --quiet FETCH_HEAD &&
-              [[ "$(git -C "$work/source" rev-parse HEAD)" == "$source_ref" ]]
+              [[ "$(git -C "$work/source" rev-parse HEAD)" == "$source_ref" ]] &&
+              git -C "$work/source" rev-parse HEAD^{tree} >"$work/source-tree"
           } >>"$log" 2>&1; then
             echo "::error::Private source checkout or commit verification failed."
             exit 1
           fi
-          unset GH_TOKEN
+          # Authentication was command-local; never persist the helper or token.
+          if git -C "$work/source" config --local --get-regexp '^(credential\.|http\..*extraheader)' >>"$log" 2>&1; then
+            echo "::error::Unexpected persistent source authentication configuration."
+            exit 1
+          fi
+          unset GH_TOKEN GITHUB_TOKEN LINE
+          checkout_status=0
           echo "Private source checkout verified."
 
-      - name: Audit source, build, test, and package
+      - name: Run independent build and validation checks
+        env:
+          GIT_CONFIG_NOSYSTEM: "1"
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_TERMINAL_PROMPT: "0"
         run: |
           set -euo pipefail
           umask 077
-          work="$RUNNER_TEMP/fruits-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          unset GH_TOKEN GITHUB_TOKEN LINE GH_DEBUG GIT_TRACE GIT_TRACE_CURL GIT_CURL_VERBOSE
+          work="$RUNNER_TEMP/fruits-validation-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           cd "$work/source"
-          markers='enableThemeDL|RUINBypassAgeVerification|RUINLocalLYPEnabled|RUINLegacyMessagingEnabled|RUINRegisterNativeThemeMetadata|RUINThemeStoreDownload|settings\.skip_age_verification|settings\.local_lyp|settings\.legacy_messaging'
-          if [[ ! -f tests/test_removed_access_overrides.py ]] ||
-            ! python3 -B -m unittest discover -s tests -p test_removed_access_overrides.py \
-              >"$work/access-audit.log" 2>&1; then
-            echo "::error::The source access-override audit failed."
-            exit 1
-          fi
-          if git grep -q -I -E "$markers" -- src resources 2>>"$work/access-audit.log"; then
-            echo "::error::The source contains a removed access-override marker."
-            exit 1
-          elif [[ "$?" -ne 1 ]]; then
-            echo "::error::The source audit could not be performed."
-            exit 1
-          fi
-          echo "Source access-override audit passed."
-
-          if ! make -j4 all >"$work/build.log" 2>&1; then
-            echo "::error::Fruits compilation failed in make all."
-            exit 1
-          fi
-          echo "Fruits compilation passed."
-          if ! make -j4 check-host >"$work/host-tests.log" 2>&1; then
-            echo "::error::Fruits host tests failed in make check-host."
-            exit 1
-          fi
-          echo "Fruits host tests passed."
-          if ! make dist >"$work/dist.log" 2>&1; then
-            echo "::error::Fruits package generation failed in make dist."
-            exit 1
-          fi
-
-          if ! python3 -B - "$markers" >>"$work/access-audit.log" 2>&1 <<'PY'
+          failed=0
+          last_status=0
+          run_check() {
+            local name="$1" started ended status=0
+            shift
+            started="$(date -u +%FT%TZ)"
+            "$@" >"$work/check-$name.log" 2>&1 || status=$?
+            ended="$(date -u +%FT%TZ)"
+            printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$status" "$started" "$ended" "$*" >>"$work/checks.tsv"
+            last_status="$status"
+            if [[ "$status" -ne 0 ]]; then failed=1; fi
+          }
+          skipped() {
+            printf '%s\t-\t-\t-\tskipped: compilation failed\n' "$1" >>"$work/checks.tsv"
+          }
+          audit_markers() {
+            local status=0
+            git grep -I -n -E 'enableThemeDL|RUINBypassAgeVerification|RUINLocalLYPEnabled|RUINLegacyMessagingEnabled|RUINRegisterNativeThemeMetadata|RUINThemeStoreDownload|settings\.skip_age_verification|settings\.local_lyp|settings\.legacy_messaging' -- src resources || status=$?
+            [[ "$status" -eq 1 ]]
+          }
+          verify_binary() {
+            xcrun lipo build/RUIN.dylib -archs &&
+              xcrun lipo build/RUIN.dylib -verify_arch arm64 arm64e &&
+              codesign --verify --strict build/RUIN.dylib &&
+              python3 -B - <<'PY'
+          import importlib.util
           from pathlib import Path
-          import re
-          import sys
-
-          data = Path("build/RUIN.dylib").read_bytes()
-          if re.search(sys.argv[1].encode("ascii"), data):
-              raise SystemExit("The library contains a removed access-override marker.")
+          spec = importlib.util.spec_from_file_location("distribution", "tools/distribute.py")
+          distribution = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(distribution)
+          dependencies = distribution.verify_dylib(Path("build/RUIN.dylib"))
+          print("Verified exact arm64/arm64e slices, signature, and both dependency lists")
+          for dependency in dependencies:
+              print(dependency)
           PY
-          then
-            echo "::error::The built library access-override audit failed."
-            exit 1
-          fi
+          }
+          stage_validated_assets() {
+            local version candidate
+            version="$(cat VERSION)"
+            [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.+-]+)?$ ]] || return 1
+            candidate="$work/validated-assets"
+            mkdir -m 700 "$candidate" || return 1
+            (cd dist && shasum -a 256 -c SHA256SUMS) || return 1
+            [[ -f build/RUIN.dylib && ! -L build/RUIN.dylib && -d resources/RUINResources.bundle && ! -L resources/RUINResources.bundle ]] || return 1
+            cp -P build/RUIN.dylib "$candidate/RUIN.dylib" || return 1
+            for variant in jailed; do
+              [[ -f "dist/RUIN-$version-$variant.deb" && ! -L "dist/RUIN-$version-$variant.deb" ]] || return 1
+              cp -P "dist/RUIN-$version-$variant.deb" "$candidate/RUIN-$variant.deb" || return 1
+            done
+            (cd resources && zip -qry -X "$candidate/RUINResources.bundle.zip" RUINResources.bundle) || return 1
+            unzip -tq "$candidate/RUINResources.bundle.zip" || return 1
+          }
 
-          version="$(cat VERSION)"
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.+-]+)?$ ]]; then
-            echo "::error::Unexpected package version."
+          run_check removed-access python3 -B -m unittest discover -s tests -p test_removed_access_overrides.py
+          run_check removed-markers audit_markers
+          run_check check-portable make -j4 check-portable
+          run_check all make -j4 all
+          build_status="$last_status"
+          if [[ "$build_status" -eq 0 ]]; then
+            # A fixture failure must not hide independent packaging diagnostics.
+            run_check check-host make -j4 check-host
+            run_check check-packaging make -j4 check-packaging
+            run_check dist make dist
+            run_check distribution-security python3 -B tests/check_distribution_security.py build/RUIN.dylib
+            run_check binary-verification verify_binary
+          else
+            for check in check-host check-packaging dist distribution-security binary-verification; do skipped "$check"; done
+          fi
+          if [[ "$failed" -eq 0 ]]; then
+            run_check stage-assets stage_validated_assets
+            if [[ "$last_status" -eq 0 ]]; then touch "$work/all-checks-passed"; fi
+          fi
+          if [[ "$failed" -ne 0 ]]; then
+            echo "::error::Validation failed; private diagnostics will be saved."
             exit 1
           fi
-          assets="$work/assets"
-          if ! {
-            mkdir -m 700 "$assets" &&
-              (cd dist && shasum -a 256 -c SHA256SUMS) &&
-              [[ -f build/RUIN.dylib && ! -L build/RUIN.dylib &&
-                 -f "dist/RUIN-$version-jailed.deb" && ! -L "dist/RUIN-$version-jailed.deb" ]] &&
-              cp -P build/RUIN.dylib "$assets/RUIN.dylib" &&
-              cp -P "dist/RUIN-$version-jailed.deb" "$assets/RUIN-jailed.deb" &&
-              (cd resources && zip -qry -X "$assets/RUINResources.bundle.zip" RUINResources.bundle) &&
-              (cd "$assets" && unzip -tq RUINResources.bundle.zip &&
-                shasum -a 256 RUIN.dylib RUINResources.bundle.zip RUIN-jailed.deb >SHA256SUMS &&
-                shasum -a 256 -c SHA256SUMS)
-          } >"$work/assets.log" 2>&1; then
-            echo "::error::The selected release files did not pass verification."
-            exit 1
-          fi
-          echo "Packages and checksums verified."
+          echo "Build, fixtures, package, and binary checks passed."
 
-      - name: Save and verify the private Fruits Release
+      - name: Assemble private diagnostics and provenance
+        if: always()
+        run: |
+          set -euo pipefail
+          umask 077
+          unset GH_TOKEN GITHUB_TOKEN LINE
+          [[ -n "$RUNNER_TEMP" && "$GITHUB_RUN_ID" =~ ^[0-9]+$ && "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]
+          work="$RUNNER_TEMP/fruits-validation-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          [[ -d "$work" && ! -L "$work" ]]
+          mkdir -m 700 "$work/diagnostics" "$work/private-upload"
+          export FRUITS_VALIDATION_WORK="$work"
+          python3 -B - >"$work/diagnostics-preparation.log" 2>&1 <<'PY'
+          import csv, json, os, shutil
+          from datetime import datetime, timezone
+          from pathlib import Path
+          work = Path(os.environ["FRUITS_VALIDATION_WORK"])
+          def value(name):
+              path = work / name
+              return path.read_text().strip() if path.is_file() else None
+          checks = []
+          if (work / "checks.tsv").is_file():
+              for name, status, start, finish, command in csv.reader((work / "checks.tsv").open(), delimiter="\t"):
+                  checks.append(dict(name=name, exit_code=None if status == "-" else int(status),
+                      started_at=None if start == "-" else start, finished_at=None if finish == "-" else finish,
+                      command=command, log=f"check-{name}.log" if (work / f"check-{name}.log").is_file() else None))
+          passed = (work / "all-checks-passed").is_file()
+          provenance = dict(source_repository="Nanoth-del/Fruits", source_commit=value("source-ref"),
+              source_tree=value("source-tree"), workflow_repository=os.environ["GITHUB_REPOSITORY"],
+              workflow_commit=os.environ["GITHUB_SHA"], workflow_ref=os.environ["GITHUB_REF"],
+              run_id=os.environ["GITHUB_RUN_ID"], run_attempt=os.environ["GITHUB_RUN_ATTEMPT"],
+              runner_os=os.environ.get("RUNNER_OS"), runner_arch=os.environ.get("RUNNER_ARCH"),
+              started_at=value("started-at"), finished_at=datetime.now(timezone.utc).isoformat(),
+              all_checks_passed=passed, binary_assets_included=passed, checks=checks)
+          (work / "private-upload/provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
+          shutil.copy2(work / "private-upload/provenance.json", work / "diagnostics/provenance.json")
+          for path in [*work.glob("*.log"), work / "checks.tsv"]:
+              if path.is_file() and not path.is_symlink():
+                  shutil.copy2(path, work / "diagnostics" / path.name)
+          if passed:
+              for name in ("RUIN.dylib", "RUINResources.bundle.zip", "RUIN-jailed.deb"):
+                  path = work / "validated-assets" / name
+                  if not path.is_file() or path.is_symlink():
+                      raise RuntimeError("Validated asset missing or unsafe")
+                  shutil.copy2(path, work / "private-upload" / name)
+          PY
+          (cd "$work" && zip -qry -X "$work/private-upload/build-test-diagnostics.zip" diagnostics) >>"$work/diagnostics-preparation.log" 2>&1
+          python3 -B - >>"$work/diagnostics-preparation.log" 2>&1 <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          work = Path(os.environ["FRUITS_VALIDATION_WORK"])
+          upload = work / "private-upload"
+          def digest(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+          files = sorted(upload.iterdir())
+          assert files and all(path.is_file() and not path.is_symlink() for path in files)
+          (upload / "SHA256SUMS").write_text("".join(f"{digest(path)}  {path.name}\n" for path in files))
+          manifest = [dict(name=path.name, digest="sha256:" + digest(path)) for path in sorted(upload.iterdir())]
+          (work / "expected-assets.json").write_text(json.dumps(manifest))
+          PY
+          (cd "$work/private-upload" && shasum -a 256 -c SHA256SUMS) >>"$work/diagnostics-preparation.log" 2>&1
+          echo "Private diagnostics and provenance prepared."
+
+      - name: Save and verify the private Fruits draft
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.LINE }}
           GH_HOST: github.com
@@ -172,114 +264,90 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          work="$RUNNER_TEMP/fruits-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          source_ref="$(cat "$work/source-ref")"
-          version="$(cat "$work/source/VERSION")"
-          destination=Nanoth-del/Fruits
-          tag="fruits-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          work="$RUNNER_TEMP/fruits-validation-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           log="$work/release.log"
-          cd "$work/assets"
-
+          export GH_CONFIG_DIR="$work/upload-gh-config"
+          unset GH_DEBUG GIT_TRACE GIT_TRACE_CURL GIT_CURL_VERBOSE
+          trap 'unset GH_TOKEN GITHUB_TOKEN LINE' EXIT
+          if [[ ! -f "$work/source-ref" || ! -f "$work/expected-assets.json" ]]; then
+            echo "::error::A reviewed source and complete diagnostics are required for private upload."
+            exit 1
+          fi
+          source_ref="$(cat "$work/source-ref")"
+          if [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != ee0820f147f518f2888e026308ccee577f12dc76d2588ab0e65bcf90acbe891e ]]; then
+            echo "::error::The private upload source no longer matches the reviewed scope."
+            exit 1
+          fi
+          readonly destination=Nanoth-del/Fruits
+          tag="fruits-validation-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           private_destination() {
             [[ -n "$GH_TOKEN" ]] &&
               [[ "$(gh api --hostname github.com "repos/$destination" \
                 --jq '.full_name == "Nanoth-del/Fruits" and .private and .visibility == "private"')" == true ]]
           }
-
           tag_target() {
             gh api --hostname github.com "repos/$destination/git/ref/tags/$tag" \
               --jq 'select(.object.type == "commit") | .object.sha'
           }
-
-          created_tag=false
-          release_id=
-          cleanup_unpublished() {
-            if [[ "$release_id" =~ ^[0-9]+$ ]]; then
-              local draft
-              draft="$(gh api --hostname github.com "repos/$destination/releases/$release_id" --jq '.draft')" || return
-              [[ "$draft" == true ]] || return 0
-              gh api --hostname github.com --method DELETE "repos/$destination/releases/$release_id" >/dev/null || return
-            fi
-            if [[ "$created_tag" == true && "$(tag_target)" == "$source_ref" ]]; then
-              gh api --hostname github.com --method DELETE "repos/$destination/git/refs/tags/$tag" >/dev/null
-            fi
-          }
-
-          digest() {
-            shasum -a 256 "$1" | awk '{print "sha256:" $1}'
-          }
-
-          if ! private_destination >"$log" 2>&1; then
-            echo "::error::Release destination is not confirmed private."
+          if ! {
+            private_destination &&
+              [[ "$(gh api --hostname github.com "repos/$destination/commits/$source_ref" --jq '.sha')" == "$source_ref" ]] &&
+              gh api --hostname github.com --method POST "repos/$destination/git/refs" \
+                -f "ref=refs/tags/$tag" -f "sha=$source_ref" &&
+              [[ "$(tag_target)" == "$source_ref" ]]
+          } >"$log" 2>&1; then
+            echo "::error::The private validation tag could not be verified."
             exit 1
           fi
-          printf 'RUIN %s\nSource commit %s\n\nLicense: https://github.com/%s/blob/%s/LICENSE\n' \
-            "$version" "$source_ref" "$destination" "$source_ref" >"$work/release-notes"
-          trap 'cleanup_unpublished >>"$log" 2>&1 || true' EXIT
-          if ! gh api --hostname github.com --method POST "repos/$destination/git/refs" \
-            -f "ref=refs/tags/$tag" -f "sha=$source_ref" >>"$log" 2>&1; then
-            echo "::error::Could not create the private build tag."
-            exit 1
-          fi
-          created_tag=true
-          if [[ "$(tag_target 2>>"$log")" != "$source_ref" ]]; then
-            echo "::error::The private build tag does not match the reviewed commit."
-            exit 1
-          fi
-          if ! release_id="$(gh api --hostname github.com --method POST "repos/$destination/releases" \
-            -f "tag_name=$tag" -f "target_commitish=$source_ref" \
-            -f "name=Fruits build $GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
-            -f "body=$(cat "$work/release-notes")" -F draft=true -F prerelease=true \
-            --jq '.id' 2>>"$log")" || [[ ! "$release_id" =~ ^[0-9]+$ ]]; then
-            echo "::error::Private draft creation failed."
+          printf 'Private validation diagnostics for source %s.\n\nBinary assets are included only when every required check passes. See provenance.json for each command and exit code.\n' \
+            "$source_ref" >"$work/release-notes"
+          jq -n --arg tag "$tag" --arg source "$source_ref" \
+            --arg title "Fruits validation $GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
+            --rawfile body "$work/release-notes" \
+            '{tag_name:$tag,target_commitish:$source,name:$title,body:$body,draft:true,prerelease:true}' \
+            >"$work/release-request.json"
+          if ! private_destination >>"$log" 2>&1 ||
+            ! release_id="$(gh api --hostname github.com --method POST "repos/$destination/releases" \
+              --input "$work/release-request.json" --jq '.id' 2>>"$log")" || [[ ! "$release_id" =~ ^[0-9]+$ ]]; then
+            echo "::error::Private diagnostic draft creation failed."
             exit 1
           fi
           if ! private_destination >>"$log" 2>&1 ||
             ! gh release upload "$tag" --repo "github.com/$destination" \
-            RUIN.dylib RUINResources.bundle.zip RUIN-jailed.deb SHA256SUMS >>"$log" 2>&1; then
-            echo "::error::Private draft asset upload failed."
-            exit 1
-          fi
-
-          if ! gh api --hostname github.com "repos/$destination/releases/$release_id" >"$work/release.json" 2>>"$log" ||
-            ! jq -e --arg tag "$tag" \
-              --arg dylib "$(digest RUIN.dylib)" \
-              --arg bundle "$(digest RUINResources.bundle.zip)" \
-              --arg deb "$(digest RUIN-jailed.deb)" \
-              --arg sums "$(digest SHA256SUMS)" \
-              '.draft and .tag_name == $tag and
-                ((.assets | map({name, digest}) | sort_by(.name)) ==
-                 [{name:"RUIN-jailed.deb",digest:$deb},
-                  {name:"RUIN.dylib",digest:$dylib},
-                  {name:"RUINResources.bundle.zip",digest:$bundle},
-                  {name:"SHA256SUMS",digest:$sums}] )' \
-              "$work/release.json" >>"$log" 2>&1; then
-            echo "::error::Private draft assets or tag did not match the build."
-            exit 1
-          fi
-          if [[ "$(tag_target 2>>"$log")" != "$source_ref" ]] || ! private_destination >>"$log" 2>&1; then
-            echo "::error::The private destination could not be reverified."
+              "$work/private-upload/"* >>"$log" 2>&1; then
+            echo "::error::Private diagnostic draft upload failed."
             exit 1
           fi
           if ! {
-            [[ "$(gh api --hostname github.com --method PATCH "repos/$destination/releases/$release_id" \
-              -F draft=false --jq '.draft')" == false ]]
+            gh api --hostname github.com "repos/$destination/releases/$release_id" >"$work/release.json" &&
+              jq -e --arg tag "$tag" --arg source "$source_ref" --slurpfile expected "$work/expected-assets.json" \
+                '.draft and .tag_name == $tag and .target_commitish == $source and
+                 ((.assets | map({name, digest}) | sort_by(.name)) == ($expected[0] | sort_by(.name)))' "$work/release.json" &&
+              [[ "$(tag_target)" == "$source_ref" ]] && private_destination
           } >>"$log" 2>&1; then
-            echo "::error::Private Release publication failed."
+            echo "::error::Private diagnostic draft verification failed."
             exit 1
           fi
-          trap - EXIT
-          unset GH_TOKEN
-          echo "Four verified files were saved to the private Fruits Release."
+          # Deliberately keep the Release as a draft, including successful builds.
+          echo "Verified diagnostics were saved to a private Fruits draft."
 
-      - name: Remove temporary build data
+      - name: Remove temporary validation data
         if: always()
         run: |
           set -euo pipefail
-          work="$RUNNER_TEMP/fruits-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           if [[ -z "$RUNNER_TEMP" || ! "$GITHUB_RUN_ID" =~ ^[0-9]+$ || ! "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]; then
             echo "::error::Unexpected runner temporary directory."
             exit 1
           fi
-          rm -rf -- "$work"
-          echo "Temporary build data removed."
+          runner_temp="$(cd "$RUNNER_TEMP" && pwd -P)"
+          work="$runner_temp/fruits-validation-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          if [[ "$runner_temp" == / || "$work" != "$runner_temp/"fruits-validation-[0-9]*-[0-9]* || -L "$work" ]]; then
+            echo "::error::Temporary validation directory failed its cleanup guard."
+            exit 1
+          fi
+          if [[ -e "$work" ]]; then
+            [[ -d "$work" && "$(cd "$work" && pwd -P)" == "$work" ]]
+            rm -rf -- "$work"
+          fi
+          echo "Temporary validation data removed."
