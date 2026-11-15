@@ -102,7 +102,7 @@ jobs:
 
           if ! git -C "$source_path" \
             -c "http.extraheader=AUTHORIZATION: basic $auth_header" \
-            fetch --no-tags --prune --depth=1 origin "$SOURCE_REF" >>"$checkout_log" 2>&1 || \
+            fetch --no-tags --prune --depth=2 origin "$SOURCE_REF" >>"$checkout_log" 2>&1 || \
              ! git -C "$source_path" checkout --detach --quiet FETCH_HEAD >>"$checkout_log" 2>&1; then
             echo "::error::Private source checkout failed. Detailed output was withheld."
             exit 1
@@ -120,13 +120,6 @@ jobs:
             if ! git -C "$source_path" -c "http.extraheader=AUTHORIZATION: basic $auth_header" \
               fetch --no-tags --depth=1 origin "$baseline_ref" >>"$checkout_log" 2>&1; then
               echo "::error::Native regression reference checkout failed."
-              exit 1
-            fi
-          fi
-          if [[ "$BUILD_VARIANT" == "independent" ]]; then
-            if ! git -C "$source_path" -c "http.extraheader=AUTHORIZATION: basic $auth_header" \
-              fetch --no-tags --depth=1 origin 6b8fa0acfe309bf5b6b52d2d1e2845ee62524bde >>"$checkout_log" 2>&1; then
-              echo "::error::Comparison verification reference checkout failed."
               exit 1
             fi
           fi
@@ -283,7 +276,8 @@ jobs:
           set -euo pipefail
           # Build 453 compiled these exact inputs and ran their existing local validators.
           # Reuse that result for audit/document-only changes; product changes still rebuild.
-          if git diff --quiet 6b8fa0acfe309bf5b6b52d2d1e2845ee62524bde HEAD -- \
+          if git cat-file -e 6b8fa0acfe309bf5b6b52d2d1e2845ee62524bde^{commit} 2>/dev/null && \
+             git diff --quiet 6b8fa0acfe309bf5b6b52d2d1e2845ee62524bde HEAD -- \
             GeflechtEQ GeflechtEQ.xcodeproj tests/native tests/fixtures tests/srev_detection tests/srev_input tests/srev_runtime; then
             echo "Comparison product and validation inputs match the already verified reference."
             exit 0
@@ -500,7 +494,7 @@ jobs:
             exit 1
           fi
           mkdir -p "$report_root"
-          for part in native xcodebuild comparison ipa-audit; do
+          for part in checkout native xcodebuild comparison ipa-audit; do
             candidate="$RUNNER_TEMP/geflechteq-$part.log"
             if [[ -f "$candidate" ]]; then tail -n 3000 "$candidate" >"$report_root/$part.log"; fi
           done
