@@ -16,6 +16,17 @@ on:
           - comparison
           - independent
 
+      run_behavior_checks:
+        description: Run behavior suites and the retained comparison compile
+        required: true
+        default: true
+        type: boolean
+      retain_verification_evidence:
+        description: Explicitly opt in to an additional diagnostic ZIP
+        required: true
+        default: false
+        type: boolean
+
 # The workflow does not need an ambient repository GITHUB_TOKEN, so no
 # repository permission is granted.
 permissions: {}
@@ -168,7 +179,7 @@ jobs:
 
       - name: Verify native independent behavior privately
         id: native_checks
-        if: inputs.build_variant == 'independent'
+        if: inputs.build_variant == 'independent' && inputs.run_behavior_checks
         continue-on-error: true
         working-directory: private-source
         shell: bash
@@ -269,7 +280,7 @@ jobs:
           echo "iOS archive succeeded."
 
       - name: Compile retained comparison target privately
-        if: inputs.build_variant == 'independent'
+        if: inputs.build_variant == 'independent' && inputs.run_behavior_checks
         working-directory: private-source
         shell: bash
         run: |
@@ -417,7 +428,7 @@ jobs:
           echo "Unsigned IPA privacy audit succeeded: version $bundle_version ($bundle_build)."
 
       - name: Require successful independent native checks
-        if: inputs.build_variant == 'independent' && steps.native_checks.outcome != 'success'
+        if: inputs.build_variant == 'independent' && inputs.run_behavior_checks && steps.native_checks.outcome != 'success'
         shell: bash
         run: |
           echo "::error::The independent artifact cannot be published until native checks pass."
@@ -479,7 +490,7 @@ jobs:
           echo "Private Release asset published and verified."
 
       - name: Retain verification evidence privately
-        if: always() && inputs.build_variant == 'independent'
+        if: always() && inputs.build_variant == 'independent' && inputs.retain_verification_evidence
         env:
           RELEASE_TOKEN: ${{ secrets.GEFLECHTEQ }}
         shell: bash
