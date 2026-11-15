@@ -35,7 +35,7 @@ jobs:
           : >"$work/checks.tsv"
           if ! source_ref="$(jq -er '.inputs.source_ref' "$GITHUB_EVENT_PATH" 2>"$work/request.log")" ||
             [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 1b673b7c8221d7d37b448e93c8867678eeb4dd708bebdf159ad5436c26a7618a ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 08593f9242832ca13435e265d5fafec197e2a0bfdb61907db4a32c0928ea4555 ]]; then
             printf 'request\t1\t-\t-\tvalidate reviewed source input\n' >>"$work/checks.tsv"
             echo "::error::The requested source is outside the reviewed validation scope."
             exit 1
@@ -176,6 +176,11 @@ jobs:
           if [[ "$build_status" -eq 0 ]]; then
             # A fixture failure must not hide independent packaging diagnostics.
             run_check check-host make -j4 check-host
+            if [[ "$last_status" -ne 0 ]]; then
+              # Diagnostic only: retain the failed primary result and collect later
+              # independent fixtures instead of masking them behind the first error.
+              make -k -i -j4 check-host >"$work/check-host-followup-diagnostics.log" 2>&1 || true
+            fi
             run_check check-packaging make -j4 check-packaging
             run_check dist make dist
             run_check distribution-security python3 -B tests/check_distribution_security.py build/RUIN.dylib
@@ -275,7 +280,7 @@ jobs:
           fi
           source_ref="$(cat "$work/source-ref")"
           if [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 1b673b7c8221d7d37b448e93c8867678eeb4dd708bebdf159ad5436c26a7618a ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 08593f9242832ca13435e265d5fafec197e2a0bfdb61907db4a32c0928ea4555 ]]; then
             echo "::error::The private upload source no longer matches the reviewed scope."
             exit 1
           fi
