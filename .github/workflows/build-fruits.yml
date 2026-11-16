@@ -40,7 +40,7 @@ jobs:
           : >"$work/checks.tsv"
           if ! source_ref="$(jq -er '.inputs.source_ref' "$GITHUB_EVENT_PATH" 2>"$work/request.log")" ||
             [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 8e8ac81d551c28bbee93d6af78a6ff9eb12099c809fdf596cb634d9a6daea5b8 ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != e9aed67de10bea2d588cbf71d1eb7448496708a60acc1b18a3ae115279e2cb41 ]]; then
             printf 'request\t1\t-\t-\tvalidate reviewed source input\n' >>"$work/checks.tsv"
             echo "::error::The requested source is outside the reviewed validation scope."
             exit 1
@@ -292,7 +292,7 @@ jobs:
           fi
           source_ref="$(cat "$work/source-ref")"
           if [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 8e8ac81d551c28bbee93d6af78a6ff9eb12099c809fdf596cb634d9a6daea5b8 ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != e9aed67de10bea2d588cbf71d1eb7448496708a60acc1b18a3ae115279e2cb41 ]]; then
             echo "::error::The private upload source no longer matches the reviewed scope."
             exit 1
           fi
