@@ -40,7 +40,7 @@ jobs:
           : >"$work/checks.tsv"
           if ! source_ref="$(jq -er '.inputs.source_ref' "$GITHUB_EVENT_PATH" 2>"$work/request.log")" ||
             [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 84c9e02b0ee3fc13d45ff1b15debea9ec2f69e0ed862eb8065e2f7905b3ca7e4 ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 3e96246c67c8a781d6b6a954e95f50ed832a9deb13fd7d8354ccefd750c92b12 ]]; then
             printf 'request\t1\t-\t-\tvalidate reviewed source input\n' >>"$work/checks.tsv"
             echo "::error::The requested source is outside the reviewed validation scope."
             exit 1
@@ -168,13 +168,13 @@ jobs:
             candidate="$work/validated-assets"
             mkdir -m 700 "$candidate" || return 1
             (cd dist && shasum -a 256 -c SHA256SUMS) || return 1
-            [[ -f build/RUIN.dylib && ! -L build/RUIN.dylib && -d resources/RUINResources.bundle && ! -L resources/RUINResources.bundle ]] || return 1
+            [[ -f build/RUIN.dylib && ! -L build/RUIN.dylib && -d build/RUINResources.bundle && ! -L build/RUINResources.bundle ]] || return 1
             cp -P build/RUIN.dylib "$candidate/RUIN.dylib" || return 1
             for variant in jailed; do
               [[ -f "dist/RUIN-$version-$variant.deb" && ! -L "dist/RUIN-$version-$variant.deb" ]] || return 1
               cp -P "dist/RUIN-$version-$variant.deb" "$candidate/RUIN-$variant.deb" || return 1
             done
-            (cd resources && zip -qry -X "$candidate/RUINResources.bundle.zip" RUINResources.bundle) || return 1
+            (cd build && zip -qry -X "$candidate/RUINResources.bundle.zip" RUINResources.bundle) || return 1
             unzip -tq "$candidate/RUINResources.bundle.zip" || return 1
             [[ -f dist/Fruits-LiveContainer.zip && ! -L dist/Fruits-LiveContainer.zip ]] || return 1
             cp -P dist/Fruits-LiveContainer.zip "$candidate/Fruits-LiveContainer.zip" || return 1
@@ -311,7 +311,7 @@ jobs:
           fi
           source_ref="$(cat "$work/source-ref")"
           if [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 84c9e02b0ee3fc13d45ff1b15debea9ec2f69e0ed862eb8065e2f7905b3ca7e4 ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 3e96246c67c8a781d6b6a954e95f50ed832a9deb13fd7d8354ccefd750c92b12 ]]; then
             echo "::error::The private upload source no longer matches the reviewed scope."
             exit 1
           fi
