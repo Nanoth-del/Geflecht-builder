@@ -40,7 +40,7 @@ jobs:
           : >"$work/checks.tsv"
           if ! source_ref="$(jq -er '.inputs.source_ref' "$GITHUB_EVENT_PATH" 2>"$work/request.log")" ||
             [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 16838512295688e96b7a397eedabfbd9681e6e1efb3076596cb2c3a19d6756ef ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 890a0fbfdc847dd987b670ea4782531b152c291e4091c900e11afa7cb7aba269 ]]; then
             printf 'request\t1\t-\t-\tvalidate reviewed source input\n' >>"$work/checks.tsv"
             echo "::error::The requested source is outside the reviewed validation scope."
             exit 1
@@ -191,7 +191,7 @@ jobs:
             echo "::error::Localization validation failed; private diagnostics will be saved."
             exit 1
           fi
-          run_check personal-reply-ui python3 -B tests/check_personal_reply_ui.py
+          run_check personal-reply-ui make -j4 check-reply-runtime
           if [[ "$last_status" -ne 0 ]]; then
             for check in all check-host check-packaging dist livecontainer-package distribution-security binary-verification; do skipped "$check"; done
             echo "::error::Personal reply validation failed; private diagnostics will be saved."
@@ -311,7 +311,7 @@ jobs:
           fi
           source_ref="$(cat "$work/source-ref")"
           if [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 16838512295688e96b7a397eedabfbd9681e6e1efb3076596cb2c3a19d6756ef ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 890a0fbfdc847dd987b670ea4782531b152c291e4091c900e11afa7cb7aba269 ]]; then
             echo "::error::The private upload source no longer matches the reviewed scope."
             exit 1
           fi
