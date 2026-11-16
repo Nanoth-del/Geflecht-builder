@@ -8,6 +8,11 @@ on:
         description: Full lowercase commit SHA of the reviewed Fruits source
         required: true
         type: string
+      diagnostics_only:
+        description: Save validation logs without distributing binaries
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -35,7 +40,7 @@ jobs:
           : >"$work/checks.tsv"
           if ! source_ref="$(jq -er '.inputs.source_ref' "$GITHUB_EVENT_PATH" 2>"$work/request.log")" ||
             [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != f6ec6387887124f67348439fbaf3cf8f9e716d23c59f748ceefbc22ba24500b7 ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != d7b44fb7295e2fdc88305f655da4736396005c00886849a388afdf5919fda3bd ]]; then
             printf 'request\t1\t-\t-\tvalidate reviewed source input\n' >>"$work/checks.tsv"
             echo "::error::The requested source is outside the reviewed validation scope."
             exit 1
@@ -224,19 +229,23 @@ jobs:
                       started_at=None if start == "-" else start, finished_at=None if finish == "-" else finish,
                       command=command, log=f"check-{name}.log" if (work / f"check-{name}.log").is_file() else None))
           passed = (work / "all-checks-passed").is_file()
+          request = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+          diagnostics_only = request.get("inputs", {}).get("diagnostics_only") in (True, "true")
+          include_binaries = passed and not diagnostics_only
           provenance = dict(source_repository="Nanoth-del/Fruits", source_commit=value("source-ref"),
               source_tree=value("source-tree"), workflow_repository=os.environ["GITHUB_REPOSITORY"],
               workflow_commit=os.environ["GITHUB_SHA"], workflow_ref=os.environ["GITHUB_REF"],
               run_id=os.environ["GITHUB_RUN_ID"], run_attempt=os.environ["GITHUB_RUN_ATTEMPT"],
               runner_os=os.environ.get("RUNNER_OS"), runner_arch=os.environ.get("RUNNER_ARCH"),
               started_at=value("started-at"), finished_at=datetime.now(timezone.utc).isoformat(),
-              all_checks_passed=passed, binary_assets_included=passed, checks=checks)
+              all_checks_passed=passed, binary_assets_included=include_binaries,
+              diagnostics_only=diagnostics_only, checks=checks)
           (work / "private-upload/provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
           shutil.copy2(work / "private-upload/provenance.json", work / "diagnostics/provenance.json")
           for path in [*work.glob("*.log"), work / "checks.tsv"]:
               if path.is_file() and not path.is_symlink():
                   shutil.copy2(path, work / "diagnostics" / path.name)
-          if passed:
+          if include_binaries:
               for name in ("RUIN.dylib", "RUINResources.bundle.zip", "RUIN-jailed.deb"):
                   path = work / "validated-assets" / name
                   if not path.is_file() or path.is_symlink():
@@ -280,7 +289,7 @@ jobs:
           fi
           source_ref="$(cat "$work/source-ref")"
           if [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != f6ec6387887124f67348439fbaf3cf8f9e716d23c59f748ceefbc22ba24500b7 ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != d7b44fb7295e2fdc88305f655da4736396005c00886849a388afdf5919fda3bd ]]; then
             echo "::error::The private upload source no longer matches the reviewed scope."
             exit 1
           fi
