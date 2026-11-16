@@ -40,7 +40,7 @@ jobs:
           : >"$work/checks.tsv"
           if ! source_ref="$(jq -er '.inputs.source_ref' "$GITHUB_EVENT_PATH" 2>"$work/request.log")" ||
             [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != d7b44fb7295e2fdc88305f655da4736396005c00886849a388afdf5919fda3bd ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 8e8ac81d551c28bbee93d6af78a6ff9eb12099c809fdf596cb634d9a6daea5b8 ]]; then
             printf 'request\t1\t-\t-\tvalidate reviewed source input\n' >>"$work/checks.tsv"
             echo "::error::The requested source is outside the reviewed validation scope."
             exit 1
@@ -171,6 +171,8 @@ jobs:
             done
             (cd resources && zip -qry -X "$candidate/RUINResources.bundle.zip" RUINResources.bundle) || return 1
             unzip -tq "$candidate/RUINResources.bundle.zip" || return 1
+            [[ -f dist/Fruits-LiveContainer.zip && ! -L dist/Fruits-LiveContainer.zip ]] || return 1
+            cp -P dist/Fruits-LiveContainer.zip "$candidate/Fruits-LiveContainer.zip" || return 1
           }
 
           run_check removed-access python3 -B -m unittest discover -s tests -p test_removed_access_overrides.py
@@ -188,10 +190,11 @@ jobs:
             fi
             run_check check-packaging make -j4 check-packaging
             run_check dist make dist
+            run_check livecontainer-package make livecontainer-dist
             run_check distribution-security python3 -B tests/check_distribution_security.py build/RUIN.dylib
             run_check binary-verification verify_binary
           else
-            for check in check-host check-packaging dist distribution-security binary-verification; do skipped "$check"; done
+            for check in check-host check-packaging dist livecontainer-package distribution-security binary-verification; do skipped "$check"; done
           fi
           if [[ "$failed" -eq 0 ]]; then
             run_check stage-assets stage_validated_assets
@@ -246,7 +249,7 @@ jobs:
               if path.is_file() and not path.is_symlink():
                   shutil.copy2(path, work / "diagnostics" / path.name)
           if include_binaries:
-              for name in ("RUIN.dylib", "RUINResources.bundle.zip", "RUIN-jailed.deb"):
+              for name in ("RUIN.dylib", "RUINResources.bundle.zip", "RUIN-jailed.deb", "Fruits-LiveContainer.zip"):
                   path = work / "validated-assets" / name
                   if not path.is_file() or path.is_symlink():
                       raise RuntimeError("Validated asset missing or unsafe")
@@ -289,7 +292,7 @@ jobs:
           fi
           source_ref="$(cat "$work/source-ref")"
           if [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != d7b44fb7295e2fdc88305f655da4736396005c00886849a388afdf5919fda3bd ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 8e8ac81d551c28bbee93d6af78a6ff9eb12099c809fdf596cb634d9a6daea5b8 ]]; then
             echo "::error::The private upload source no longer matches the reviewed scope."
             exit 1
           fi
