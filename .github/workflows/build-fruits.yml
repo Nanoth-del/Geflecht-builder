@@ -40,7 +40,7 @@ jobs:
           : >"$work/checks.tsv"
           if ! source_ref="$(jq -er '.inputs.source_ref' "$GITHUB_EVENT_PATH" 2>"$work/request.log")" ||
             [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 7549600adb88fae76ade168e800ceaef729c01193848e9b931b2b56887e05103 ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 394cb6f70e4bcd418c4cfb30c9850c100e6a4c4a01b8fd271b8db101622f075d ]]; then
             printf 'request\t1\t-\t-\tvalidate reviewed source input\n' >>"$work/checks.tsv"
             echo "::error::The requested source is outside the reviewed validation scope."
             exit 1
@@ -133,7 +133,12 @@ jobs:
             if [[ "$status" -ne 0 ]]; then failed=1; fi
           }
           skipped() {
-            printf '%s\t-\t-\t-\tskipped: compilation failed\n' "$1" >>"$work/checks.tsv"
+            printf '%s\t-\t-\t-\tskipped: prerequisite check failed\n' "$1" >>"$work/checks.tsv"
+          }
+          validate_model_localization() {
+            make -j4 build/check_localization build/check_ai_model_download_presentation &&
+              ./build/check_localization "$PWD/resources/RUINResources.bundle" &&
+              ./build/check_ai_model_download_presentation
           }
           audit_markers() {
             local status=0
@@ -178,6 +183,14 @@ jobs:
           run_check removed-access python3 -B -m unittest discover -s tests -p test_removed_access_overrides.py
           run_check removed-markers audit_markers
           run_check check-portable make -j4 check-portable
+          # Verify the user-visible model text before the longer iOS/LLM build.
+          # These fixtures still run in the full check-host suite below.
+          run_check model-localization validate_model_localization
+          if [[ "$last_status" -ne 0 ]]; then
+            for check in all check-host check-packaging dist livecontainer-package distribution-security binary-verification; do skipped "$check"; done
+            echo "::error::Localization validation failed; private diagnostics will be saved."
+            exit 1
+          fi
           run_check all make -j4 all
           build_status="$last_status"
           if [[ "$build_status" -eq 0 ]]; then
@@ -292,7 +305,7 @@ jobs:
           fi
           source_ref="$(cat "$work/source-ref")"
           if [[ ! "$source_ref" =~ ^[0-9a-f]{40}$ ]] ||
-            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 7549600adb88fae76ade168e800ceaef729c01193848e9b931b2b56887e05103 ]]; then
+            [[ "$(printf '%s' "$source_ref" | shasum -a 256 | cut -d ' ' -f 1)" != 394cb6f70e4bcd418c4cfb30c9850c100e6a4c4a01b8fd271b8db101622f075d ]]; then
             echo "::error::The private upload source no longer matches the reviewed scope."
             exit 1
           fi
